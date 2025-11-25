@@ -53,8 +53,8 @@ export async function GET(request: Request) {
         };
 
         return NextResponse.json(response);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching user quota:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }

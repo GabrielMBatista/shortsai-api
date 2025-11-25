@@ -109,9 +109,10 @@ model Project {
   created_at                    DateTime      @default(now())
   updated_at                    DateTime      @default(now()) @updatedAt
 
-  user       User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
   scenes     Scene[]
   usage_logs UsageLog[]
+  characters Character[] @relation("ProjectCharacters")
 
   @@index([user_id])
   @@map("projects")
@@ -157,30 +158,19 @@ model Character {
   user_id     String
   name        String
   description String?
+  images      String[]
   created_at  DateTime @default(now())
 
-  user   User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  images CharacterImage[]
+  user     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  projects Project[] @relation("ProjectCharacters")
 
   @@index([user_id])
   @@map("characters")
 }
 
-model CharacterImage {
-  id           String   @id @default(uuid())
-  character_id String
-  image_url    String
-  created_at   DateTime @default(now())
-
-  character Character @relation(fields: [character_id], references: [id], onDelete: Cascade)
-
-  @@index([character_id])
-  @@map("character_images")
-}
-
 model UsageLog {
   id               String         @id @default(uuid())
-  user_id          String
+  user_id          String?
   project_id       String?
   action_type      UsageLogAction
   provider         String
@@ -192,7 +182,7 @@ model UsageLog {
   error_message    String?
   created_at       DateTime       @default(now())
 
-  user    User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user    User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
   project Project? @relation(fields: [project_id], references: [id], onDelete: SetNull)
 
   @@index([user_id])

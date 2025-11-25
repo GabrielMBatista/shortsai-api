@@ -20,9 +20,9 @@ export async function GET(
         }
 
         return NextResponse.json(project);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching project:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }
 
@@ -32,17 +32,29 @@ export async function PATCH(
 ) {
     try {
         const { id } = await params;
-        const body: Prisma.ProjectUpdateInput = await request.json();
+        const body = await request.json();
+
+        // Extract characterIds to handle relation update separately if needed
+        const { characterIds, ...rest } = body;
+
+        const updateData: any = { ...rest };
+
+        if (characterIds && Array.isArray(characterIds)) {
+            updateData.characters = {
+                set: characterIds.map((charId: string) => ({ id: charId })),
+            };
+        }
 
         const project = await prisma.project.update({
             where: { id },
-            data: body,
+            data: updateData,
+            include: { characters: true, scenes: { orderBy: { scene_number: 'asc' } } }
         });
 
         return NextResponse.json(project);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error updating project:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }
 
@@ -57,8 +69,8 @@ export async function DELETE(
         });
 
         return NextResponse.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error deleting project:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }

@@ -11,7 +11,6 @@ export async function GET(
         const { id } = await params;
         const character = await prisma.character.findUnique({
             where: { id },
-            include: { images: true },
         });
 
         if (!character) {
@@ -21,7 +20,7 @@ export async function GET(
         return NextResponse.json(character);
     } catch (error: any) {
         console.error('Error fetching character:', error);
-        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }
 
@@ -48,6 +47,6 @@ export async function DELETE(
         return NextResponse.json({ message: 'Character deleted successfully' }, { status: 200 }); // Or 204 No Content
     } catch (error: any) {
         console.error('Error deleting character:', error);
-        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }

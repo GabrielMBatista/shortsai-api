@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
-import { Character, CharacterImage } from '@prisma/client';
+import { Character } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,26 +15,13 @@ export async function GET(request: Request) {
 
         const characters = await prisma.character.findMany({
             where: { user_id },
-            include: {
-                images: {
-                    orderBy: { created_at: 'asc' }
-                }
-            },
             orderBy: { created_at: 'desc' },
         });
 
-        // Transform to match API spec format
-        const transformedCharacters = characters.map((char: Character & { images: CharacterImage[] }) => ({
-            id: char.id,
-            name: char.name,
-            description: char.description,
-            images: char.images.map((img: CharacterImage) => img.image_url),
-        }));
-
-        return NextResponse.json(transformedCharacters);
-    } catch (error) {
+        return NextResponse.json(characters);
+    } catch (error: any) {
         console.error('Error fetching characters:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }
 
@@ -50,33 +37,19 @@ export async function POST(request: Request) {
             );
         }
 
-        // Create character with images in a transaction
         const character = await prisma.character.create({
             data: {
                 user_id,
                 name,
                 description,
-                images: {
-                    create: images.map((imageUrl: string) => ({
-                        image_url: imageUrl,
-                    })),
-                },
+                images, // Now directly storing the array of strings
             },
-            include: { images: true },
         });
 
-        // Transform response to match API spec
-        const response = {
-            id: character.id,
-            name: character.name,
-            description: character.description,
-            images: character.images.map((img: CharacterImage) => img.image_url),
-        };
-
-        return NextResponse.json(response, { status: 201 });
-    } catch (error) {
+        return NextResponse.json(character, { status: 201 });
+    } catch (error: any) {
         console.error('Error creating character:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }
 

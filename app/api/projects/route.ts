@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
-import { Prisma, Character, CharacterImage } from '@prisma/client';
+import { Prisma, Character } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,15 +32,14 @@ export async function POST(request: Request) {
                     id: { in: characterIds },
                     user_id, // Ensure characters belong to the user
                 },
-                include: { images: true },
             });
 
             // Create snapshot in the format expected by frontend
-            reference_characters_snapshot = characters.map((char: Character & { images: CharacterImage[] }) => ({
+            reference_characters_snapshot = characters.map((char: Character) => ({
                 id: char.id,
                 name: char.name,
                 description: char.description,
-                images: char.images.map((img) => img.image_url),
+                images: char.images,
             })) as Prisma.InputJsonValue;
         }
 
@@ -53,18 +52,23 @@ export async function POST(request: Request) {
                 voice_name,
                 tts_provider,
                 reference_image_url,
+                // We still support snapshot for legacy/backup, but primary link is relation
                 ...(reference_characters_snapshot && { reference_characters_snapshot }),
                 include_music: include_music || false,
                 bg_music_prompt,
                 bg_music_status: include_music ? 'pending' : null,
                 status: 'draft',
+                characters: {
+                    connect: characterIds?.map((id: string) => ({ id })) || [],
+                },
             },
+            include: { characters: true },
         });
 
         return NextResponse.json(project);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error creating project:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }
 
@@ -80,12 +84,12 @@ export async function GET(request: Request) {
         const projects = await prisma.project.findMany({
             where: { user_id },
             orderBy: { created_at: 'desc' },
-            include: { scenes: true },
+            include: { scenes: true, characters: true },
         });
 
         return NextResponse.json(projects);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching projects:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }
