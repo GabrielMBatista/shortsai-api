@@ -59,20 +59,13 @@ export async function GET(request: Request) {
             });
         }
 
-        // Return masked keys for security
-        const mask = (key: string | null) => {
-            if (!key) return null;
-            if (key.length <= 8) return '********';
-            return `${key.substring(0, 4)}...${key.substring(key.length - 4)}`;
-        };
-
         return NextResponse.json({
-            gemini_key: mask(apiKeys.gemini_key),
-            elevenlabs_key: mask(apiKeys.elevenlabs_key),
-            suno_key: mask(apiKeys.suno_key),
+            gemini_key: apiKeys.gemini_key,
+            elevenlabs_key: apiKeys.elevenlabs_key,
+            suno_key: apiKeys.suno_key,
         });
     } catch (error: any) {
         console.error('Error fetching API keys:', error);
-        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }
