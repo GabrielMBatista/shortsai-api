@@ -1,0 +1,102 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+}
+
+enum TTSProvider {
+  gemini
+  elevenlabs
+}
+
+enum MusicStatus {
+  pending
+  loading
+  completed
+  error
+}
+
+enum SceneStatus {
+  pending
+  loading
+  completed
+  error
+}
+
+model User {
+  id                 String           @id @default(uuid())
+  email              String           @unique
+  name               String
+  avatar_url         String?
+  google_id          String?          @unique
+  subscription_plan  SubscriptionPlan @default(FREE)
+  stripe_customer_id String?
+  created_at         DateTime         @default(now())
+
+  api_keys ApiKey?
+  projects Project[]
+
+  @@map("users")
+}
+
+model ApiKey {
+  user_id        String   @id
+  gemini_key     String?
+  elevenlabs_key String?
+  suno_key       String?
+  updated_at     DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+model Project {
+  id                  String       @id @default(uuid())
+  user_id             String
+  topic               String
+  style               String
+  language            String       @default("en")
+  voice_name          String
+  tts_provider        TTSProvider
+  reference_image_url String?
+  include_music       Boolean      @default(false)
+  bg_music_prompt     String?
+  bg_music_url        String?
+  bg_music_status     MusicStatus?
+  created_at          DateTime     @default(now())
+  updated_at          DateTime     @default(now()) @updatedAt
+
+  user   User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  scenes Scene[]
+
+  @@index([user_id])
+  @@map("projects")
+}
+
+model Scene {
+  id                 String      @id @default(uuid())
+  project_id         String
+  scene_number       Int
+  visual_description String
+  narration          String
+  duration_seconds   Decimal     @db.Decimal(5, 2)
+  image_url          String?
+  image_status       SceneStatus @default(pending)
+  audio_url          String?
+  audio_status       SceneStatus @default(pending)
+
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@index([project_id])
+  @@index([project_id, scene_number])
+  @@map("scenes")
+}
