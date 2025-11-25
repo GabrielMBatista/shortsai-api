@@ -5,7 +5,7 @@ const createPrismaClient = () => {
     if (!process.env.DATABASE_URL) {
         console.warn("DATABASE_URL is not defined. Prisma Client will fail to connect.");
     }
-    return new PrismaClient().$extends(withAccelerate());
+    return new PrismaClient();
 };
 
 const globalForPrisma = global as unknown as {
