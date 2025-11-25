@@ -34,12 +34,23 @@ export async function PATCH(
         const { id } = await params;
         const body = await request.json();
 
+        // Check if project exists first
+        const existingProject = await prisma.project.findUnique({
+            where: { id },
+            include: { characters: true } // Include relations to check state if needed
+        });
+
+        if (!existingProject) {
+            return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+        }
+
         // Extract characterIds to handle relation update separately if needed
         const { characterIds, ...rest } = body;
 
         const updateData: any = { ...rest };
 
         if (characterIds && Array.isArray(characterIds)) {
+            // Use set to replace all existing characters with the new list
             updateData.characters = {
                 set: characterIds.map((charId: string) => ({ id: charId })),
             };
