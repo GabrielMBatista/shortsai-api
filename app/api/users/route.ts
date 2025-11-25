@@ -35,9 +35,9 @@ export async function POST(request: Request) {
         });
 
         return NextResponse.json(user);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error creating user:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }
 
@@ -56,8 +56,8 @@ export async function GET(request: Request) {
 
         const users = await prisma.user.findMany();
         return NextResponse.json(users);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching users:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
     }
 }
