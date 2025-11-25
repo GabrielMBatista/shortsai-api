@@ -1,19 +1,8 @@
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
+import { PrismaClient } from "@prisma/client/edge";
+import { withAccelerate } from "@prisma/extension-accelerate";
 
 const createPrismaClient = () => {
-    const databaseUrl = process.env.DATABASE_URL || "";
-
-    // Usar driver adapter do PostgreSQL
-    console.log("Using PostgreSQL adapter");
-    const pool = new Pool({ connectionString: databaseUrl });
-    const adapter = new PrismaPg(pool);
-
-    return new PrismaClient({
-        adapter,
-        log: ['query', 'error', 'warn'],
-    });
+    return new PrismaClient().$extends(withAccelerate());
 };
 
 const globalForPrisma = global as unknown as {
