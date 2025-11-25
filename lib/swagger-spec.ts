@@ -203,6 +203,27 @@ export const openApiSpec: OpenAPIObject = {
                 },
             },
         },
+        '/characters/{id}': {
+            get: {
+                summary: 'Get Character',
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+                responses: {
+                    '200': {
+                        description: 'Character details',
+                        content: {
+                            'application/json': {
+                                schema: { $ref: '#/components/schemas/Character' },
+                            },
+                        },
+                    },
+                },
+            },
+            delete: {
+                summary: 'Delete Character',
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+                responses: { '200': { description: 'Character deleted' } },
+            },
+        },
         '/user/quota': {
             get: {
                 summary: 'Get current usage and limits',
