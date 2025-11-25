@@ -1,7 +1,10 @@
-import { PrismaClient } from "@prisma/client/edge";
+import { PrismaClient } from "@prisma/client";
 import { withAccelerate } from "@prisma/extension-accelerate";
 
 const createPrismaClient = () => {
+    if (!process.env.DATABASE_URL) {
+        console.warn("DATABASE_URL is not defined. Prisma Client will fail to connect.");
+    }
     return new PrismaClient().$extends(withAccelerate());
 };
 
