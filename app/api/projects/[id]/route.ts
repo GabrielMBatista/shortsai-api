@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +32,7 @@ export async function PATCH(
 ) {
     try {
         const { id } = await params;
-        const body = await request.json();
+        const body: Prisma.ProjectUpdateInput = await request.json();
 
         const project = await prisma.project.update({
             where: { id },

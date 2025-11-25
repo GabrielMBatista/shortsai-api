@@ -19,7 +19,7 @@ export async function POST() {
         });
 
         // Criar API keys para o admin
-        const apiKeys = await prisma.apiKey.upsert({
+        await prisma.apiKey.upsert({
             where: { user_id: adminUser.id },
             update: {},
             create: {

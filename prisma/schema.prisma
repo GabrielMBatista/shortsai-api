@@ -2,14 +2,20 @@ generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
+
 datasource db {
   provider = "postgresql"
 }
 
-
 enum SubscriptionPlan {
   FREE
   PRO
+}
+
+enum Tier {
+  free
+  pro
+  enterprise
 }
 
 enum TTSProvider {
@@ -31,6 +37,25 @@ enum SceneStatus {
   error
 }
 
+enum ProjectStatus {
+  draft
+  generating
+  completed
+  failed
+}
+
+enum UsageLogAction {
+  GENERATE_SCRIPT
+  GENERATE_IMAGE
+  GENERATE_TTS
+  GENERATE_MUSIC
+}
+
+enum UsageLogStatus {
+  success
+  failed
+}
+
 model User {
   id                 String           @id @default(uuid())
   email              String           @unique
@@ -38,11 +63,16 @@ model User {
   avatar_url         String?
   google_id          String?          @unique
   subscription_plan  SubscriptionPlan @default(FREE)
+  tier               Tier             @default(free)
   stripe_customer_id String?
   created_at         DateTime         @default(now())
+  updated_at         DateTime         @default(now()) @updatedAt
 
-  api_keys ApiKey?
-  projects Project[]
+  api_keys    ApiKey?
+  user_limits UserLimits?
+  projects    Project[]
+  characters  Character[]
+  usage_logs  UsageLog[]
 
   @@map("users")
 }
@@ -60,23 +90,28 @@ model ApiKey {
 }
 
 model Project {
-  id                  String       @id @default(uuid())
-  user_id             String
-  topic               String
-  style               String
-  language            String       @default("en")
-  voice_name          String
-  tts_provider        TTSProvider
-  reference_image_url String?
-  include_music       Boolean      @default(false)
-  bg_music_prompt     String?
-  bg_music_url        String?
-  bg_music_status     MusicStatus?
-  created_at          DateTime     @default(now())
-  updated_at          DateTime     @default(now()) @updatedAt
+  id                            String        @id @default(uuid())
+  user_id                       String
+  topic                         String
+  style                         String
+  language                      String        @default("en")
+  voice_name                    String
+  tts_provider                  TTSProvider
+  reference_image_url           String?
+  reference_characters_snapshot Json?
+  include_music                 Boolean       @default(false)
+  bg_music_prompt               String?
+  bg_music_url                  String?
+  bg_music_status               MusicStatus?
+  status                        ProjectStatus @default(draft)
+  generated_title               String?
+  generated_description         String?
+  created_at                    DateTime      @default(now())
+  updated_at                    DateTime      @default(now()) @updatedAt
 
-  user   User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  scenes Scene[]
+  user       User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  scenes     Scene[]
+  usage_logs UsageLog[]
 
   @@index([user_id])
   @@map("projects")
@@ -93,10 +128,74 @@ model Scene {
   image_status       SceneStatus @default(pending)
   audio_url          String?
   audio_status       SceneStatus @default(pending)
+  created_at         DateTime    @default(now())
 
   project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
 
   @@index([project_id])
   @@index([project_id, scene_number])
   @@map("scenes")
+}
+
+model UserLimits {
+  user_id                  String   @id
+  monthly_videos_limit     Int      @default(5)
+  monthly_minutes_tts      Int      @default(10)
+  monthly_images_limit     Int      @default(50)
+  current_videos_used      Int      @default(0)
+  current_minutes_tts_used Decimal  @default(0) @db.Decimal(10, 2)
+  current_images_used      Int      @default(0)
+  last_reset_date          DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("user_limits")
+}
+
+model Character {
+  id          String   @id @default(uuid())
+  user_id     String
+  name        String
+  description String?
+  created_at  DateTime @default(now())
+
+  user   User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  images CharacterImage[]
+
+  @@index([user_id])
+  @@map("characters")
+}
+
+model CharacterImage {
+  id           String   @id @default(uuid())
+  character_id String
+  image_url    String
+  created_at   DateTime @default(now())
+
+  character Character @relation(fields: [character_id], references: [id], onDelete: Cascade)
+
+  @@index([character_id])
+  @@map("character_images")
+}
+
+model UsageLog {
+  id               String         @id @default(uuid())
+  user_id          String
+  project_id       String?
+  action_type      UsageLogAction
+  provider         String
+  model_name       String
+  tokens_input     Int            @default(0)
+  tokens_output    Int            @default(0)
+  duration_seconds Decimal        @default(0) @db.Decimal(10, 2)
+  status           UsageLogStatus
+  error_message    String?
+  created_at       DateTime       @default(now())
+
+  user    User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [project_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([project_id])
+  @@map("usage_logs")
 }

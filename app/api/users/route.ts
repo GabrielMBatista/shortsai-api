@@ -3,9 +3,16 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+interface UserCreateBody {
+    email: string;
+    name: string;
+    avatar_url?: string;
+    google_id?: string;
+}
+
 export async function POST(request: Request) {
     try {
-        const body = await request.json();
+        const body: UserCreateBody = await request.json();
         const { email, name, avatar_url, google_id } = body;
 
         if (!email || !name) {
