@@ -9,6 +9,11 @@ export interface OpenAPIObject {
         url: string;
         description?: string;
     }[];
+    components?: {
+        securitySchemes?: Record<string, any>;
+        schemas?: Record<string, any>;
+    };
+    security?: Record<string, string[]>[];
     paths: {
         [path: string]: {
             [method: string]: {

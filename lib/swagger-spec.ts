@@ -1,99 +1,217 @@
 import { OpenAPIObject } from './types';
 
 export const openApiSpec: OpenAPIObject = {
-    openapi: '3.0.0',
+    openapi: '3.0.3',
     info: {
-        title: 'ShortsAI API',
+        title: 'ShortsAI Studio API',
+        description: 'API contract for the ShortsAI automated video generator backend.',
         version: '1.0.0',
-        description: 'API for generating short videos using AI',
     },
     servers: [
         {
-            url: 'https://shortsai-api.vercel.app',
+            url: 'https://shortsai-api.vercel.app/api',
             description: 'Production Server',
         },
         {
-            url: 'http://localhost:3000',
+            url: 'http://localhost:3000/api',
             description: 'Local Development',
         },
     ],
+    components: {
+        securitySchemes: {
+            BearerAuth: {
+                type: 'http',
+                scheme: 'bearer',
+                bearerFormat: 'JWT',
+            },
+        },
+        schemas: {
+            Project: {
+                type: 'object',
+                properties: {
+                    id: { type: 'string', format: 'uuid' },
+                    topic: { type: 'string' },
+                    status: { type: 'string', enum: ['draft', 'generating', 'completed', 'failed'] },
+                    scenes: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/Scene' },
+                    },
+                },
+            },
+            Scene: {
+                type: 'object',
+                properties: {
+                    sceneNumber: { type: 'integer' },
+                    narration: { type: 'string' },
+                    imageUrl: { type: 'string', format: 'uri' },
+                    audioUrl: { type: 'string', format: 'uri' },
+                },
+            },
+            Character: {
+                type: 'object',
+                properties: {
+                    id: { type: 'string', format: 'uuid' },
+                    name: { type: 'string' },
+                    description: { type: 'string' },
+                    images: {
+                        type: 'array',
+                        items: { type: 'string', format: 'uri' },
+                    },
+                },
+            },
+        },
+    },
+    security: [
+        { BearerAuth: [] },
+    ],
     paths: {
-        '/api/hello': {
+        '/projects': {
             get: {
-                summary: 'Health Check',
-                description: 'Returns a hello world message to verify API is working',
+                summary: 'List user projects',
+                parameters: [
+                    { name: 'user_id', in: 'query', required: true, schema: { type: 'string' } }
+                ],
                 responses: {
                     '200': {
-                        description: 'Successful response',
+                        description: 'List of projects',
                         content: {
                             'application/json': {
                                 schema: {
-                                    type: 'object',
-                                    properties: {
-                                        message: { type: 'string', example: 'Hello World' },
-                                    },
+                                    type: 'array',
+                                    items: { $ref: '#/components/schemas/Project' },
                                 },
                             },
                         },
                     },
                 },
             },
-        },
-        '/api/users': {
-            get: {
-                summary: 'Get Users',
-                parameters: [
-                    {
-                        name: 'email',
-                        in: 'query',
-                        schema: { type: 'string' },
-                        description: 'Filter by email to get a specific user',
-                    },
-                ],
-                responses: {
-                    '200': {
-                        description: 'List of users or single user',
-                    },
-                },
-            },
             post: {
-                summary: 'Create User',
+                summary: 'Create and start generating a new project',
                 requestBody: {
                     required: true,
                     content: {
                         'application/json': {
                             schema: {
                                 type: 'object',
-                                required: ['email', 'name'],
+                                required: ['user_id', 'topic', 'style', 'voice_name'],
                                 properties: {
-                                    email: { type: 'string' },
-                                    name: { type: 'string' },
-                                    avatar_url: { type: 'string' },
-                                    google_id: { type: 'string' },
+                                    user_id: { type: 'string' },
+                                    topic: { type: 'string' },
+                                    style: { type: 'string' },
+                                    voice_name: { type: 'string' },
+                                    characterIds: {
+                                        type: 'array',
+                                        items: { type: 'string', format: 'uuid' },
+                                    },
                                 },
                             },
                         },
                     },
                 },
                 responses: {
-                    '200': { description: 'User created' },
+                    '201': {
+                        description: 'Project created',
+                        content: {
+                            'application/json': {
+                                schema: { $ref: '#/components/schemas/Project' },
+                            },
+                        },
+                    },
                 },
             },
         },
-        '/api/user/quota': {
+        '/projects/{id}': {
             get: {
-                summary: 'Get User Quota',
+                summary: 'Get project details',
                 parameters: [
                     {
-                        name: 'user_id',
-                        in: 'query',
+                        in: 'path',
+                        name: 'id',
+                        schema: { type: 'string', format: 'uuid' },
+                        required: true,
+                    },
+                ],
+                responses: {
+                    '200': {
+                        description: 'Project details',
+                        content: {
+                            'application/json': {
+                                schema: { $ref: '#/components/schemas/Project' },
+                            },
+                        },
+                    },
+                },
+            },
+            delete: {
+                summary: 'Delete a project',
+                parameters: [
+                    {
+                        in: 'path',
+                        name: 'id',
                         required: true,
                         schema: { type: 'string' },
                     },
                 ],
                 responses: {
+                    '204': { description: 'Project deleted' },
+                },
+            },
+        },
+        '/characters': {
+            get: {
+                summary: 'Get user character library',
+                parameters: [
+                    { name: 'user_id', in: 'query', required: true, schema: { type: 'string' } }
+                ],
+                responses: {
                     '200': {
-                        description: 'User quota details',
+                        description: 'List of characters',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'array',
+                                    items: { $ref: '#/components/schemas/Character' },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            post: {
+                summary: 'Save a new character',
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['user_id', 'name', 'images'],
+                                properties: {
+                                    user_id: { type: 'string' },
+                                    name: { type: 'string' },
+                                    description: { type: 'string' },
+                                    images: {
+                                        type: 'array',
+                                        items: { type: 'string' },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '201': { description: 'Character saved' },
+                },
+            },
+        },
+        '/user/quota': {
+            get: {
+                summary: 'Get current usage and limits',
+                parameters: [
+                    { name: 'user_id', in: 'query', required: true, schema: { type: 'string' } }
+                ],
+                responses: {
+                    '200': {
+                        description: 'User quota status',
                         content: {
                             'application/json': {
                                 schema: {
@@ -104,8 +222,7 @@ export const openApiSpec: OpenAPIObject = {
                                             type: 'object',
                                             properties: {
                                                 maxVideos: { type: 'integer' },
-                                                maxTTSMinutes: { type: 'number' },
-                                                maxImages: { type: 'integer' },
+                                                maxTTSMinutes: { type: 'integer' },
                                             },
                                         },
                                         used: {
@@ -113,7 +230,6 @@ export const openApiSpec: OpenAPIObject = {
                                             properties: {
                                                 currentVideos: { type: 'integer' },
                                                 currentTTSMinutes: { type: 'number' },
-                                                currentImages: { type: 'integer' },
                                             },
                                         },
                                     },
@@ -124,150 +240,14 @@ export const openApiSpec: OpenAPIObject = {
                 },
             },
         },
-        '/api/projects': {
-            get: {
-                summary: 'List Projects',
-                parameters: [
-                    {
-                        name: 'user_id',
-                        in: 'query',
-                        required: true,
-                        schema: { type: 'string' },
-                    },
-                ],
-                responses: {
-                    '200': { description: 'List of projects' },
-                },
-            },
-            post: {
-                summary: 'Create Project',
-                requestBody: {
-                    required: true,
-                    content: {
-                        'application/json': {
-                            schema: {
-                                type: 'object',
-                                required: ['user_id', 'topic', 'style', 'voice_name', 'tts_provider'],
-                                properties: {
-                                    user_id: { type: 'string' },
-                                    topic: { type: 'string' },
-                                    style: { type: 'string' },
-                                    language: { type: 'string', default: 'en' },
-                                    voice_name: { type: 'string' },
-                                    tts_provider: { type: 'string', enum: ['gemini', 'elevenlabs'] },
-                                    reference_image_url: { type: 'string' },
-                                    characterIds: { type: 'array', items: { type: 'string' } },
-                                    include_music: { type: 'boolean' },
-                                    bg_music_prompt: { type: 'string' },
-                                },
-                            },
-                        },
-                    },
-                },
-                responses: {
-                    '200': { description: 'Project created' },
-                },
-            },
-        },
-        '/api/projects/{id}': {
-            get: {
-                summary: 'Get Project',
-                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-                responses: { '200': { description: 'Project details' } },
-            },
-            patch: {
-                summary: 'Update Project',
-                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-                requestBody: {
-                    content: {
-                        'application/json': {
-                            schema: { type: 'object' },
-                        },
-                    },
-                },
-                responses: { '200': { description: 'Project updated' } },
-            },
-            delete: {
-                summary: 'Delete Project',
-                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-                responses: { '200': { description: 'Project deleted' } },
-            },
-        },
-        '/api/characters': {
-            get: {
-                summary: 'List Characters',
-                parameters: [{ name: 'user_id', in: 'query', required: true, schema: { type: 'string' } }],
-                responses: { '200': { description: 'List of characters' } },
-            },
-            post: {
-                summary: 'Create Character',
-                requestBody: {
-                    required: true,
-                    content: {
-                        'application/json': {
-                            schema: {
-                                type: 'object',
-                                required: ['user_id', 'name', 'images'],
-                                properties: {
-                                    user_id: { type: 'string' },
-                                    name: { type: 'string' },
-                                    description: { type: 'string' },
-                                    images: { type: 'array', items: { type: 'string' } },
-                                },
-                            },
-                        },
-                    },
-                },
-                responses: { '201': { description: 'Character created' } },
-            },
-        },
-        '/api/scenes': {
-            post: {
-                summary: 'Create Scene',
-                requestBody: {
-                    required: true,
-                    content: {
-                        'application/json': {
-                            schema: {
-                                type: 'object',
-                                required: ['project_id', 'scene_number', 'visual_description', 'narration', 'duration_seconds'],
-                                properties: {
-                                    project_id: { type: 'string' },
-                                    scene_number: { type: 'integer' },
-                                    visual_description: { type: 'string' },
-                                    narration: { type: 'string' },
-                                    duration_seconds: { type: 'number' },
-                                },
-                            },
-                        },
-                    },
-                },
-                responses: { '200': { description: 'Scene created' } },
-            },
-        },
-        '/api/scenes/{id}': {
-            patch: {
-                summary: 'Update Scene',
-                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-                requestBody: {
-                    content: { 'application/json': { schema: { type: 'object' } } },
-                },
-                responses: { '200': { description: 'Scene updated' } },
-            },
-            delete: {
-                summary: 'Delete Scene',
-                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-                responses: { '200': { description: 'Scene deleted' } },
-            },
-        },
-        '/api/seed': {
+        '/seed': {
             post: {
                 summary: 'Seed Database',
                 description: 'Creates admin user and default data',
                 responses: {
-                    '200': { description: 'Database seeded' },
-                },
-            },
-        },
+                    '200': { description: 'Database seeded' }
+                }
+            }
+        }
     },
 };
