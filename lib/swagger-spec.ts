@@ -186,7 +186,7 @@ export const openApiSpec: OpenAPIObject = {
                 },
             },
         },
-        '/users/quota': {
+        '/user/quota': {
             get: {
                 summary: 'Get User Usage Quota',
                 parameters: [
@@ -217,12 +217,12 @@ export const openApiSpec: OpenAPIObject = {
                                 properties: {
                                     user_id: { type: 'string' },
                                     project_id: { type: 'string' },
-                                    action_type: { type: 'string' },
+                                    action_type: { type: 'string', enum: ['GENERATE_SCRIPT', 'GENERATE_IMAGE', 'GENERATE_TTS', 'GENERATE_MUSIC'] },
                                     provider: { type: 'string' },
                                     model_name: { type: 'string' },
                                     tokens_input: { type: 'integer' },
                                     tokens_output: { type: 'integer' },
-                                    status: { type: 'string' },
+                                    status: { type: 'string', enum: ['success', 'failed'] },
                                 },
                             },
                         },
