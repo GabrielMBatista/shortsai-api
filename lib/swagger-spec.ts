@@ -140,7 +140,7 @@ export const openApiSpec: OpenAPIObject = {
         },
         '/user/apikeys': {
             get: {
-                summary: 'Get User API Keys (Masked)',
+                summary: 'Get User API Keys (Masked/Encrypted)',
                 parameters: [
                     { name: 'user_id', in: 'query', required: true, schema: { type: 'string' } },
                 ],
@@ -342,7 +342,7 @@ export const openApiSpec: OpenAPIObject = {
         },
         '/scenes/{id}': {
             patch: {
-                summary: 'Update scene assets',
+                summary: 'Update scene assets and content',
                 parameters: [
                     { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
                 ],
@@ -352,6 +352,9 @@ export const openApiSpec: OpenAPIObject = {
                             schema: {
                                 type: 'object',
                                 properties: {
+                                    visual_description: { type: 'string', description: 'Updated visual prompt' },
+                                    narration: { type: 'string', description: 'Updated narration text' },
+                                    duration_seconds: { type: 'number' },
                                     image_url: { type: 'string' },
                                     image_status: { type: 'string' },
                                     audio_url: { type: 'string' },
