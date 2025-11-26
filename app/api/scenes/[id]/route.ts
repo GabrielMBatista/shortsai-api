@@ -10,11 +10,32 @@ export async function PATCH(
 ) {
     try {
         const { id } = await params;
-        const body: Prisma.SceneUpdateInput = await request.json();
+        const body = await request.json();
+        const {
+            visual_description,
+            narration,
+            duration_seconds,
+            image_url,
+            image_status,
+            audio_url,
+            audio_status,
+            error_message,
+            attempts,
+        } = body;
 
         const scene = await prisma.scene.update({
             where: { id },
-            data: body,
+            data: {
+                visual_description,
+                narration,
+                duration_seconds,
+                image_url,
+                image_status,
+                audio_url,
+                audio_status,
+                error_message,
+                attempts,
+            },
         });
 
         return NextResponse.json(scene);

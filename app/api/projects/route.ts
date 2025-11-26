@@ -18,6 +18,7 @@ export async function POST(request: Request) {
             characterIds,
             include_music,
             bg_music_prompt,
+            duration_config,
         } = body;
 
         if (!user_id || !topic || !style || !voice_name || !tts_provider) {
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
                 include_music: include_music || false,
                 bg_music_prompt,
                 bg_music_status: include_music ? 'pending' : null,
+                duration_config: duration_config || Prisma.JsonNull,
                 status: 'draft',
                 characters: {
                     connect: characterIds?.map((id: string) => ({ id })) || [],

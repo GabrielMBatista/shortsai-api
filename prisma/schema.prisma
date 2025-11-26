@@ -106,6 +106,9 @@ model Project {
   status                        ProjectStatus @default(draft)
   generated_title               String?
   generated_description         String?
+  duration_config               Json?
+  lock_session_id               String?
+  lock_expires_at               DateTime?
   created_at                    DateTime      @default(now())
   updated_at                    DateTime      @default(now()) @updatedAt
 
@@ -129,6 +132,8 @@ model Scene {
   image_status       SceneStatus @default(pending)
   audio_url          String?
   audio_status       SceneStatus @default(pending)
+  error_message      String?
+  attempts           Int         @default(0)
   created_at         DateTime    @default(now())
 
   project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
@@ -180,6 +185,7 @@ model UsageLog {
   duration_seconds Decimal        @default(0) @db.Decimal(10, 2)
   status           UsageLogStatus
   error_message    String?
+  idempotency_key  String?        @unique
   created_at       DateTime       @default(now())
 
   user    User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)

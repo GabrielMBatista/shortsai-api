@@ -35,6 +35,14 @@ export const openApiSpec: OpenAPIObject = {
                     bg_music_url: { type: 'string' },
                     generated_title: { type: 'string' },
                     generated_description: { type: 'string' },
+                    duration_config: {
+                        type: 'object',
+                        properties: {
+                            min: { type: 'integer' },
+                            max: { type: 'integer' },
+                            targetScenes: { type: 'integer' },
+                        },
+                    },
                     characterIds: {
                         type: 'array',
                         items: { type: 'string' },
@@ -186,7 +194,7 @@ export const openApiSpec: OpenAPIObject = {
                 },
             },
         },
-        '/user/quota': {
+        '/users/quota': {
             get: {
                 summary: 'Get User Usage Quota',
                 parameters: [
@@ -217,12 +225,12 @@ export const openApiSpec: OpenAPIObject = {
                                 properties: {
                                     user_id: { type: 'string' },
                                     project_id: { type: 'string' },
-                                    action_type: { type: 'string', enum: ['GENERATE_SCRIPT', 'GENERATE_IMAGE', 'GENERATE_TTS', 'GENERATE_MUSIC'] },
+                                    action_type: { type: 'string' },
                                     provider: { type: 'string' },
                                     model_name: { type: 'string' },
                                     tokens_input: { type: 'integer' },
                                     tokens_output: { type: 'integer' },
-                                    status: { type: 'string', enum: ['success', 'failed'] },
+                                    status: { type: 'string' },
                                 },
                             },
                         },
@@ -271,6 +279,14 @@ export const openApiSpec: OpenAPIObject = {
                                     language: { type: 'string' },
                                     include_music: { type: 'boolean' },
                                     bg_music_prompt: { type: 'string' },
+                                    duration_config: {
+                                        type: 'object',
+                                        properties: {
+                                            min: { type: 'integer' },
+                                            max: { type: 'integer' },
+                                            targetScenes: { type: 'integer' },
+                                        },
+                                    },
                                     characterIds: {
                                         type: 'array',
                                         items: { type: 'string' },
@@ -422,6 +438,58 @@ export const openApiSpec: OpenAPIObject = {
                 ],
                 responses: {
                     '200': { description: 'Character deleted' },
+                },
+            },
+        },
+        '/projects/{id}/lock': {
+            post: {
+                summary: 'Acquire lock for project generation',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['session_id'],
+                                properties: {
+                                    session_id: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': { description: 'Lock acquired' },
+                    '409': { description: 'Project locked by another session' },
+                },
+            },
+        },
+        '/projects/{id}/unlock': {
+            post: {
+                summary: 'Release lock for project',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['session_id'],
+                                properties: {
+                                    session_id: { type: 'string' },
+                                    status: { type: 'string', enum: ['completed', 'failed'] },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': { description: 'Lock released' },
                 },
             },
         },
