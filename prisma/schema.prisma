@@ -132,8 +132,12 @@ model Scene {
   image_status       SceneStatus @default(pending)
   audio_url          String?
   audio_status       SceneStatus @default(pending)
+  sfx_url            String?
+  sfx_status         SceneStatus @default(pending)
   error_message      String?
-  attempts           Int         @default(0)
+  image_attempts     Int         @default(0)
+  audio_attempts     Int         @default(0)
+  sfx_attempts       Int         @default(0)
   created_at         DateTime    @default(now())
 
   project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)

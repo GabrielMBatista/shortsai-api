@@ -15,12 +15,6 @@ export async function PATCH(
             visual_description,
             narration,
             duration_seconds,
-            image_url,
-            image_status,
-            audio_url,
-            audio_status,
-            error_message,
-            attempts,
         } = body;
 
         const scene = await prisma.scene.update({
@@ -29,12 +23,6 @@ export async function PATCH(
                 visual_description,
                 narration,
                 duration_seconds,
-                image_url,
-                image_status,
-                audio_url,
-                audio_status,
-                error_message,
-                attempts,
             },
         });
 
