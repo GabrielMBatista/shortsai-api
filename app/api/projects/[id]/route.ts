@@ -12,7 +12,10 @@ export async function GET(
         const { id } = await params;
         const project = await prisma.project.findUnique({
             where: { id },
-            include: { scenes: { orderBy: { scene_number: 'asc' } } },
+            include: {
+                scenes: { orderBy: { scene_number: 'asc' } },
+                characters: true,
+            },
         });
 
         if (!project) {

@@ -57,6 +57,10 @@ export const openApiSpec: OpenAPIObject = {
                         type: 'array',
                         items: { $ref: '#/components/schemas/Scene' },
                     },
+                    characters: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/Character' },
+                    },
                     created_at: { type: 'string', format: 'date-time' },
                 },
             },
@@ -72,6 +76,11 @@ export const openApiSpec: OpenAPIObject = {
                     image_status: { type: 'string', enum: ['pending', 'loading', 'completed', 'error'] },
                     audio_url: { type: 'string' },
                     audio_status: { type: 'string', enum: ['pending', 'loading', 'completed', 'error'] },
+                    sfx_url: { type: 'string' },
+                    sfx_status: { type: 'string', enum: ['pending', 'loading', 'completed', 'error'] },
+                    image_attempts: { type: 'integer' },
+                    audio_attempts: { type: 'integer' },
+                    sfx_attempts: { type: 'integer' },
                 },
             },
             Character: {
@@ -358,7 +367,7 @@ export const openApiSpec: OpenAPIObject = {
         },
         '/scenes/{id}': {
             patch: {
-                summary: 'Update scene assets and content',
+                summary: 'Update scene text content',
                 parameters: [
                     { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
                 ],
@@ -371,10 +380,6 @@ export const openApiSpec: OpenAPIObject = {
                                     visual_description: { type: 'string', description: 'Updated visual prompt' },
                                     narration: { type: 'string', description: 'Updated narration text' },
                                     duration_seconds: { type: 'number' },
-                                    image_url: { type: 'string' },
-                                    image_status: { type: 'string' },
-                                    audio_url: { type: 'string' },
-                                    audio_status: { type: 'string' },
                                 },
                             },
                         },
@@ -382,6 +387,84 @@ export const openApiSpec: OpenAPIObject = {
                 },
                 responses: {
                     '200': { description: 'Scene updated' },
+                },
+            },
+        },
+        '/scenes/{id}/status': {
+            patch: {
+                summary: 'Update scene status (initiate generation)',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['type', 'status'],
+                                properties: {
+                                    type: { type: 'string', enum: ['image', 'audio', 'sfx'] },
+                                    status: { type: 'string', enum: ['loading'] },
+                                    force_regen: { type: 'boolean' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': { description: 'Status updated' },
+                    '409': { description: 'Asset already exists (requires force_regen)' },
+                },
+            },
+        },
+        '/scenes/{id}/asset': {
+            patch: {
+                summary: 'Save generated asset (Image/Audio)',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    image_url: { type: 'string' },
+                                    image_status: { type: 'string', enum: ['completed'] },
+                                    audio_url: { type: 'string' },
+                                    audio_status: { type: 'string', enum: ['completed'] },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': { description: 'Asset saved' },
+                },
+            },
+        },
+        '/scenes/{id}/sfx': {
+            patch: {
+                summary: 'Save generated SFX',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['sfx_url', 'sfx_status'],
+                                properties: {
+                                    sfx_url: { type: 'string' },
+                                    sfx_status: { type: 'string', enum: ['completed'] },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': { description: 'SFX saved' },
                 },
             },
         },
