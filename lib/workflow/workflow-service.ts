@@ -565,21 +565,37 @@ export class WorkflowService {
             });
             broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'completed' });
         } else if (project.status === 'generating') {
-            // If we are 'generating' but found nothing to do, and we are NOT completed...
-            // It implies we have failed items or we are stuck.
-            // Check if we have any failed items that are blocking completion.
-            const hasFailures = project.scenes.some(s =>
-                s.image_status === SceneStatus.failed || s.audio_status === SceneStatus.failed
-            ) || (project.include_music && project.bg_music_status === MusicStatus.failed);
+            // Check if we are still processing anything
+            const isProcessing = project.scenes.some(s =>
+                s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
+                s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
+                project.bg_music_status === 'loading'
+            );
 
-            if (hasFailures) {
-                // If we have failures and nothing else is running (we know nothing is running because we fell through),
-                // then we should mark the project as failed.
-                await prisma.project.update({
-                    where: { id: projectId },
-                    data: { status: 'failed' }
-                });
-                broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'failed' });
+            if (!isProcessing) {
+                // If we are 'generating' but nothing is processing, and we are NOT completed...
+                // It implies we have failed items or we are stuck.
+
+                const hasFailures = project.scenes.some(s =>
+                    s.image_status === SceneStatus.failed || s.audio_status === SceneStatus.failed
+                ) || (project.include_music && project.bg_music_status === MusicStatus.failed);
+
+                if (hasFailures) {
+                    await prisma.project.update({
+                        where: { id: projectId },
+                        data: { status: 'failed' }
+                    });
+                    broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'failed' });
+                } else {
+                    // Nothing processing, no failures, not completed. Maybe draft items left?
+                    // If we are in auto-generation, we usually ignore drafts unless we forced them to pending.
+                    // If we are here, it means we are done with the sequence.
+                    await prisma.project.update({
+                        where: { id: projectId },
+                        data: { status: 'completed' }
+                    });
+                    broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'completed' });
+                }
             }
         }
     }
