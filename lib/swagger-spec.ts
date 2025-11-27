@@ -9,7 +9,7 @@ export const openApiSpec: OpenAPIObject = {
     },
     servers: [
         {
-            url: 'https://shortsai-api.vercel.app/api',
+            url: 'http://localhost:3000/api',
             description: 'Production Server',
         },
         {
@@ -609,6 +609,51 @@ export const openApiSpec: OpenAPIObject = {
                 responses: {
                     '200': { description: 'Command accepted' },
                     '400': { description: 'Invalid command' },
+                },
+            },
+        },
+        '/ai/generate': {
+            post: {
+                summary: 'Ad-hoc AI Generation (Script, Music Prompt, etc.)',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['userId', 'action', 'params'],
+                                properties: {
+                                    userId: { type: 'string', format: 'uuid' },
+                                    action: {
+                                        type: 'string',
+                                        enum: ['generate_script', 'generate_music_prompt', 'analyze_character', 'optimize_image']
+                                    },
+                                    params: { type: 'object' },
+                                    apiKeys: {
+                                        type: 'object',
+                                        properties: {
+                                            gemini: { type: 'string' },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': {
+                        description: 'Generation result',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        result: { type: 'object' } // Can be string or object (script)
+                                    }
+                                }
+                            }
+                        }
+                    },
                 },
             },
         },

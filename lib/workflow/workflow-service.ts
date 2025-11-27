@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { SceneStatus, ProjectStatus, Project, Scene } from '@prisma/client';
+import { SceneStatus, ProjectStatus, Project, Scene, MusicStatus } from '@prisma/client';
 
 export type WorkflowAction =
     | 'generate_all'
@@ -21,6 +21,7 @@ export interface WorkflowCommand {
     apiKeys?: {
         gemini?: string;
         elevenlabs?: string;
+        suno?: string;
     };
 }
 
@@ -40,6 +41,7 @@ export interface WorkflowTask {
     apiKeys?: {
         gemini?: string;
         elevenlabs?: string;
+        suno?: string;
     };
 }
 
@@ -74,6 +76,8 @@ export class WorkflowService {
             case 'regenerate_audio':
                 if (!sceneId) throw new Error('Scene ID required');
                 return this.queueSceneAsset(projectId, sceneId, 'audio', force, apiKeys);
+            case 'generate_music':
+                return this.queueMusic(projectId, force, apiKeys);
             case 'cancel':
                 return this.cancelGeneration(projectId);
             case 'pause':
@@ -101,6 +105,13 @@ export class WorkflowService {
                     error_message: null
                 }
             });
+
+            if (project.include_music) {
+                await prisma.project.update({
+                    where: { id: project.id },
+                    data: { bg_music_status: 'pending' }
+                });
+            }
         }
 
         await prisma.project.update({
@@ -138,6 +149,19 @@ export class WorkflowService {
         await this.dispatchNext(projectId, apiKeys);
 
         return { message: `${type} queued` };
+    }
+
+    private static async queueMusic(projectId: string, force?: boolean, apiKeys?: any) {
+        await prisma.project.update({
+            where: { id: projectId },
+            data: {
+                bg_music_status: 'queued',
+                status: 'generating'
+            }
+        });
+
+        await this.dispatchNext(projectId, apiKeys);
+        return { message: 'Music queued' };
     }
 
     private static async cancelGeneration(projectId: string) {
@@ -185,67 +209,32 @@ export class WorkflowService {
     // --- Task Polling Logic ---
 
     static async getNextTask(projectId: string): Promise<WorkflowTask | null> {
-        const project = await prisma.project.findUnique({
-            where: { id: projectId },
-            include: { scenes: { orderBy: { scene_number: 'asc' } } }
-        });
-
-        if (!project || project.status !== 'generating') return null;
-
-        // Simple Poller: Find first QUEUED task
-        // We do NOT enforce sequence here. Sequence is enforced by dispatchNext queuing items one by one.
-        // This allows "Regen" (manual queue) to be picked up immediately even if out of order.
-
-        for (const scene of project.scenes) {
-            if (scene.image_status === SceneStatus.queued) {
-                // Lock it
-                await prisma.scene.update({
-                    where: { id: scene.id },
-                    data: { image_status: SceneStatus.processing }
-                });
-
-                return {
-                    id: `task-${scene.id}-image-${Date.now()}`,
-                    projectId,
-                    sceneId: scene.id,
-                    action: 'generate_image',
-                    params: {
-                        prompt: scene.visual_description,
-                        width: 1080,
-                        height: 1920
-                    },
-                    status: 'pending',
-                    createdAt: new Date()
-                };
-            }
-
-            if (scene.audio_status === SceneStatus.queued) {
-                // Lock it
-                await prisma.scene.update({
-                    where: { id: scene.id },
-                    data: { audio_status: SceneStatus.processing }
-                });
-
-                return {
-                    id: `task-${scene.id}-audio-${Date.now()}`,
-                    projectId,
-                    sceneId: scene.id,
-                    action: 'generate_audio',
-                    params: {
-                        text: scene.narration,
-                        voice: project.voice_name,
-                        provider: project.tts_provider
-                    },
-                    status: 'pending',
-                    createdAt: new Date()
-                };
-            }
-        }
-
+        // This method is legacy/polling based. dispatchNext handles the push.
+        // But if we use a pull model, we can implement it here.
+        // For now, we rely on dispatchNext pushing to the worker endpoint.
         return null;
     }
 
-    static async completeTask(projectId: string, sceneId: string, type: 'image' | 'audio' | 'music', status: 'completed' | 'failed', outputUrl?: string, error?: string) {
+    static async completeTask(projectId: string, sceneId: string | undefined, type: 'image' | 'audio' | 'music', status: 'completed' | 'failed', outputUrl?: string, error?: string, apiKeys?: any) {
+
+        if (type === 'music') {
+            if (status === 'completed') {
+                await prisma.project.update({
+                    where: { id: projectId },
+                    data: { bg_music_status: 'completed', bg_music_url: outputUrl }
+                });
+            } else {
+                await prisma.project.update({
+                    where: { id: projectId },
+                    data: { bg_music_status: 'failed' } // No retry logic for music yet
+                });
+            }
+            await this.dispatchNext(projectId, apiKeys);
+            return;
+        }
+
+        if (!sceneId) return; // Should not happen for image/audio
+
         const fieldStatus = `${type}_status`;
         const fieldUrl = `${type}_url`;
         const fieldAttempts = `${type}_attempts`;
@@ -261,7 +250,7 @@ export class WorkflowService {
             });
 
             // Trigger next step in sequence
-            await this.dispatchNext(projectId);
+            await this.dispatchNext(projectId, apiKeys);
 
         } else {
             // Handle failure & Retry logic
@@ -293,6 +282,9 @@ export class WorkflowService {
                     where: { id: projectId },
                     data: { status: 'failed' }
                 });
+            } else {
+                // If retrying, trigger immediately
+                await this.dispatchNext(projectId, apiKeys);
             }
         }
     }
@@ -308,72 +300,102 @@ export class WorkflowService {
 
         let taskToTrigger: WorkflowTask | null = null;
 
-        // Find the first asset that needs generation
-        for (const scene of project.scenes) {
-            // 1. Image
-            if (scene.image_status === SceneStatus.pending || scene.image_status === SceneStatus.queued) {
-                // If pending, mark queued first (if we came from startGeneration)
-                // If queued, it means it was manually requested or just set.
-                // We lock it to 'processing' and trigger it.
+        // 1. PRIORITY: Check for QUEUED items (Manual Overrides or Retries)
+        // These bypass the sequential check.
 
-                await prisma.scene.update({
-                    where: { id: scene.id },
-                    data: { image_status: SceneStatus.processing }
-                });
+        // Check Music Queue
+        if (project.bg_music_status === 'queued') {
+            await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: 'loading' } }); // Use loading/processing
+            taskToTrigger = {
+                id: `task-${projectId}-music-${Date.now()}`,
+                projectId,
+                action: 'generate_music',
+                params: { prompt: project.bg_music_prompt || "instrumental", duration: 30 }, // Duration is placeholder
+                status: 'pending',
+                createdAt: new Date(),
+                apiKeys
+            };
+        }
 
-                taskToTrigger = {
-                    id: `task-${scene.id}-image-${Date.now()}`,
-                    projectId,
-                    sceneId: scene.id,
-                    action: 'generate_image',
-                    params: {
-                        prompt: scene.visual_description,
-                        width: 1080,
-                        height: 1920
-                    },
-                    status: 'pending',
-                    createdAt: new Date(),
-                    apiKeys // Pass keys if available
-                };
-                break; // Found one, stop searching
+        if (!taskToTrigger) {
+            for (const scene of project.scenes) {
+                if (scene.image_status === SceneStatus.queued) {
+                    await prisma.scene.update({ where: { id: scene.id }, data: { image_status: SceneStatus.processing } });
+                    taskToTrigger = {
+                        id: `task-${scene.id}-image-${Date.now()}`,
+                        projectId, sceneId: scene.id, action: 'generate_image',
+                        params: { prompt: scene.visual_description, width: 1080, height: 1920 },
+                        status: 'pending', createdAt: new Date(), apiKeys
+                    };
+                    break;
+                }
+                if (scene.audio_status === SceneStatus.queued) {
+                    await prisma.scene.update({ where: { id: scene.id }, data: { audio_status: SceneStatus.processing } });
+                    taskToTrigger = {
+                        id: `task-${scene.id}-audio-${Date.now()}`,
+                        projectId, sceneId: scene.id, action: 'generate_audio',
+                        params: { text: scene.narration, voice: project.voice_name, provider: project.tts_provider },
+                        status: 'pending', createdAt: new Date(), apiKeys
+                    };
+                    break;
+                }
             }
+        }
 
-            if (scene.image_status === SceneStatus.processing || scene.image_status === SceneStatus.loading) {
-                return; // Busy with this, wait.
-            }
-            if (scene.image_status === SceneStatus.failed) {
-                return; // Blocked by failure
-            }
+        // 2. AUTOMATIC SEQUENCE: If no manual tasks, find next PENDING
+        if (!taskToTrigger) {
+            // Check if anything is currently processing (Global Sequence Lock for Auto-Flow)
+            // We allow manual tasks to run in parallel with auto tasks (if we wanted), 
+            // but here we prioritize manual. If manual ran, we returned.
+            // Now we check if we can run the next auto task.
 
-            // 2. Audio
-            if (scene.audio_status === SceneStatus.pending || scene.audio_status === SceneStatus.queued) {
-                await prisma.scene.update({
-                    where: { id: scene.id },
-                    data: { audio_status: SceneStatus.processing }
-                });
+            const isProcessing = project.scenes.some(s =>
+                s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
+                s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
+                project.bg_music_status === 'loading'
+            );
 
-                taskToTrigger = {
-                    id: `task-${scene.id}-audio-${Date.now()}`,
-                    projectId,
-                    sceneId: scene.id,
-                    action: 'generate_audio',
-                    params: {
-                        text: scene.narration,
-                        voice: project.voice_name,
-                        provider: project.tts_provider
-                    },
-                    status: 'pending',
-                    createdAt: new Date(),
-                    apiKeys // Pass keys if available
-                };
-                break;
-            }
+            if (!isProcessing) {
+                // Find first pending
+                for (const scene of project.scenes) {
+                    if (scene.image_status === SceneStatus.pending) {
+                        await prisma.scene.update({ where: { id: scene.id }, data: { image_status: SceneStatus.processing } });
+                        taskToTrigger = {
+                            id: `task-${scene.id}-image-${Date.now()}`,
+                            projectId, sceneId: scene.id, action: 'generate_image',
+                            params: { prompt: scene.visual_description, width: 1080, height: 1920 },
+                            status: 'pending', createdAt: new Date(), apiKeys
+                        };
+                        break;
+                    }
+                    if (scene.audio_status === SceneStatus.pending) {
+                        await prisma.scene.update({ where: { id: scene.id }, data: { audio_status: SceneStatus.processing } });
+                        taskToTrigger = {
+                            id: `task-${scene.id}-audio-${Date.now()}`,
+                            projectId, sceneId: scene.id, action: 'generate_audio',
+                            params: { text: scene.narration, voice: project.voice_name, provider: project.tts_provider },
+                            status: 'pending', createdAt: new Date(), apiKeys
+                        };
+                        break;
+                    }
+                }
 
-            if (scene.audio_status === SceneStatus.processing || scene.audio_status === SceneStatus.loading) {
-                return;
-            }
-            if (scene.audio_status === SceneStatus.failed) {
-                return;
+                // Check pending music if scenes are done? Or parallel?
+                // Usually music is last or parallel. Let's make it parallel if we want, 
+                // but for now let's stick to sequence: Images -> Audio -> Music?
+                // Or just if music is pending and nothing else is processing.
+                if (!taskToTrigger && project.include_music && project.bg_music_status === 'pending') {
+                    await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: 'loading' } });
+                    taskToTrigger = {
+                        id: `task-${projectId}-music-${Date.now()}`,
+                        projectId,
+                        action: 'generate_music',
+                        params: { prompt: project.bg_music_prompt || "instrumental", duration: 30 },
+                        status: 'pending',
+                        createdAt: new Date(),
+                        apiKeys
+                    };
+                }
             }
         }
 
@@ -393,12 +415,13 @@ export class WorkflowService {
 
         // If we reach here, all scenes are completed (or failed/ignored).
         // Check if truly all completed
-        const allDone = project.scenes.every(s =>
+        const allScenesDone = project.scenes.every(s =>
             s.image_status === SceneStatus.completed &&
             s.audio_status === SceneStatus.completed
         );
+        const musicDone = !project.include_music || project.bg_music_status === 'completed';
 
-        if (allDone) {
+        if (allScenesDone && musicDone) {
             await prisma.project.update({
                 where: { id: projectId },
                 data: { status: 'completed' }
@@ -427,6 +450,8 @@ export class WorkflowService {
                 visual_description: s.visual_description,
                 narration: s.narration
             })),
+            music_status: project.bg_music_status,
+            music_url: project.bg_music_url
         };
     }
 }

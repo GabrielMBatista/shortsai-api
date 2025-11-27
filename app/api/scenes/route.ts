@@ -15,6 +15,7 @@ export async function POST(request: Request) {
         } = body;
 
         if (!project_id || scene_number === undefined || !visual_description || !narration || !duration_seconds) {
+            console.error("Missing fields:", { project_id, scene_number, visual_description, narration, duration_seconds });
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 

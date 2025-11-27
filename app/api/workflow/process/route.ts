@@ -47,6 +47,15 @@ export async function POST(request: Request) {
                         );
                     }
                     break;
+                case 'generate_music':
+                    if ('prompt' in task.params) {
+                        outputUrl = await AIService.generateMusic(
+                            project.user_id,
+                            task.params.prompt,
+                            task.apiKeys
+                        );
+                    }
+                    break;
                 default:
                     throw new Error(`Unknown action ${task.action}`);
             }
@@ -55,9 +64,11 @@ export async function POST(request: Request) {
             await WorkflowService.completeTask(
                 task.projectId,
                 task.sceneId!,
-                task.action === 'generate_image' ? 'image' : 'audio',
+                task.action === 'generate_image' ? 'image' : (task.action === 'generate_music' ? 'music' : 'audio'),
                 'completed',
-                outputUrl
+                outputUrl,
+                undefined,
+                task.apiKeys
             );
 
             return NextResponse.json({ success: true, url: outputUrl });
@@ -68,10 +79,11 @@ export async function POST(request: Request) {
             await WorkflowService.completeTask(
                 task.projectId,
                 task.sceneId!,
-                task.action === 'generate_image' ? 'image' : 'audio',
+                task.action === 'generate_image' ? 'image' : (task.action === 'generate_music' ? 'music' : 'audio'),
                 'failed',
                 undefined,
-                error.message
+                error.message,
+                task.apiKeys
             );
 
             return NextResponse.json({ error: error.message }, { status: 500 });

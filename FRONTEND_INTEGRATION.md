@@ -89,5 +89,64 @@ The frontend should poll the project status to reflect changes in real-time.
 ## 3. Key Changes from Previous Flow
 1.  **No Client-Side Generation**: Do not call `AIService` or external APIs (OpenAI, ElevenLabs) directly from the browser.
 2.  **Fire and Forget**: The `command` endpoint returns immediately. It does *not* wait for generation to finish.
-3.  **Parallel Regeneration**: You can trigger "Regenerate Image" for Scene 3 while Scene 1 is still generating. The backend handles the queue.
-4.  **Security**: API keys sent in the payload are used only for that specific request and are not stored permanently by the command endpoint (though the backend may look up stored keys if not provided).
+## 4. Pre-Workflow AI Tools
+For tasks that happen *before* a project is created (like generating the script or analyzing characters), use the generic AI endpoint.
+
+### Endpoint
+`POST /api/ai/generate`
+
+### Actions
+
+#### A. Generate Script
+```typescript
+const generateScript = async (userId: string, topic: string, style: string, language: string, durationConfig: any, keys: { gemini?: string }) => {
+    const res = await fetch('/api/ai/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            userId,
+            action: 'generate_script',
+            params: { topic, style, language, durationConfig },
+            apiKeys: keys
+        })
+    });
+    const data = await res.json();
+    return data.result; // Returns generic JSON script object
+};
+```
+
+#### B. Analyze Character (for consistent avatars)
+```typescript
+const analyzeCharacter = async (userId: string, base64Image: string, keys: { gemini?: string }) => {
+    const res = await fetch('/api/ai/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            userId,
+            action: 'analyze_character',
+            params: { base64Image },
+            apiKeys: keys
+        })
+    });
+    const data = await res.json();
+    return data.result; // Returns string description
+};
+```
+
+#### C. Optimize Reference Image (Headshot)
+```typescript
+const optimizeImage = async (userId: string, base64Image: string, keys: { gemini?: string }) => {
+    const res = await fetch('/api/ai/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            userId,
+            action: 'optimize_image',
+            params: { base64Image },
+            apiKeys: keys
+        })
+    });
+    const data = await res.json();
+    return data.result; // Returns base64 data URI
+};
+```

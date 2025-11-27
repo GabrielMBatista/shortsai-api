@@ -6,13 +6,12 @@ const createPrismaClient = () => {
     const databaseUrl = process.env.DATABASE_URL || "";
 
     // Usar driver adapter do PostgreSQL
-    console.log("Using PostgreSQL adapter");
     const pool = new Pool({ connectionString: databaseUrl });
     const adapter = new PrismaPg(pool);
 
     return new PrismaClient({
         adapter,
-        log: ['query', 'error', 'warn'],
+        log: ['error', 'warn'],
     });
 };
 
