@@ -1,0 +1,82 @@
+import { NextResponse } from 'next/server';
+import { WorkflowService, WorkflowTask } from '@/lib/workflow/workflow-service';
+import { AIService } from '@/lib/ai/ai-service';
+import { prisma } from '@/lib/prisma';
+
+export const maxDuration = 60; // Allow 60 seconds for generation
+export const dynamic = 'force-dynamic';
+
+export async function POST(request: Request) {
+    try {
+        const task: WorkflowTask = await request.json();
+
+        if (!task || !task.id || !task.projectId) {
+            return NextResponse.json({ error: 'Invalid task payload' }, { status: 400 });
+        }
+
+        console.log(`[Worker] Processing task ${task.id} (${task.action})`);
+
+        // Get Project to get User ID (for API keys)
+        const project = await prisma.project.findUnique({ where: { id: task.projectId } });
+        if (!project) {
+            throw new Error('Project not found');
+        }
+
+        let outputUrl: string | undefined;
+
+        try {
+            switch (task.action) {
+                case 'generate_image':
+                    if ('prompt' in task.params) {
+                        outputUrl = await AIService.generateImage(
+                            project.user_id,
+                            task.params.prompt,
+                            project.style
+                        );
+                    }
+                    break;
+                case 'generate_audio':
+                    if ('text' in task.params) {
+                        outputUrl = await AIService.generateAudio(
+                            project.user_id,
+                            task.params.text,
+                            task.params.voice,
+                            task.params.provider
+                        );
+                    }
+                    break;
+                default:
+                    throw new Error(`Unknown action ${task.action}`);
+            }
+
+            // Complete Task
+            await WorkflowService.completeTask(
+                task.projectId,
+                task.sceneId!,
+                task.action === 'generate_image' ? 'image' : 'audio',
+                'completed',
+                outputUrl
+            );
+
+            return NextResponse.json({ success: true, url: outputUrl });
+
+        } catch (error: any) {
+            console.error(`[Worker] Task failed: ${error.message}`);
+
+            await WorkflowService.completeTask(
+                task.projectId,
+                task.sceneId!,
+                task.action === 'generate_image' ? 'image' : 'audio',
+                'failed',
+                undefined,
+                error.message
+            );
+
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+    } catch (error: any) {
+        console.error('[Worker] System Error:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}

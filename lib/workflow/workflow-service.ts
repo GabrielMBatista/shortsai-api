@@ -125,6 +125,10 @@ export class WorkflowService {
         ];
 
         await prisma.$transaction(updates);
+
+        // Trigger immediately
+        await this.dispatchNext(projectId);
+
         return { message: `${type} queued` };
     }
 
@@ -285,7 +289,7 @@ export class WorkflowService {
         }
     }
 
-    // Smart Dispatcher: Enforces Sequence
+    // Smart Dispatcher: Enforces Sequence & Triggers Worker
     private static async dispatchNext(projectId: string) {
         const project = await prisma.project.findUnique({
             where: { id: projectId },
@@ -294,40 +298,87 @@ export class WorkflowService {
 
         if (!project || project.status !== 'generating') return;
 
+        let taskToTrigger: WorkflowTask | null = null;
+
         // Find the first asset that needs generation
         for (const scene of project.scenes) {
             // 1. Image
-            if (scene.image_status === SceneStatus.pending) {
+            if (scene.image_status === SceneStatus.pending || scene.image_status === SceneStatus.queued) {
+                // If pending, mark queued first (if we came from startGeneration)
+                // If queued, it means it was manually requested or just set.
+                // We lock it to 'processing' and trigger it.
+
                 await prisma.scene.update({
                     where: { id: scene.id },
-                    data: { image_status: SceneStatus.queued }
+                    data: { image_status: SceneStatus.processing }
                 });
-                return; // Only queue ONE thing at a time to enforce sequence
+
+                taskToTrigger = {
+                    id: `task-${scene.id}-image-${Date.now()}`,
+                    projectId,
+                    sceneId: scene.id,
+                    action: 'generate_image',
+                    params: {
+                        prompt: scene.visual_description,
+                        width: 1080,
+                        height: 1920
+                    },
+                    status: 'pending',
+                    createdAt: new Date()
+                };
+                break; // Found one, stop searching
             }
-            if (scene.image_status === SceneStatus.queued || scene.image_status === SceneStatus.processing || scene.image_status === SceneStatus.loading) {
+
+            if (scene.image_status === SceneStatus.processing || scene.image_status === SceneStatus.loading) {
                 return; // Busy with this, wait.
             }
             if (scene.image_status === SceneStatus.failed) {
                 return; // Blocked by failure
             }
 
-            // 2. Audio (only after image is done? Or parallel? User said "Sequence scene by scene")
-            // Let's assume Image -> Audio per scene.
-            if (scene.audio_status === SceneStatus.pending) {
+            // 2. Audio
+            if (scene.audio_status === SceneStatus.pending || scene.audio_status === SceneStatus.queued) {
                 await prisma.scene.update({
                     where: { id: scene.id },
-                    data: { audio_status: SceneStatus.queued }
+                    data: { audio_status: SceneStatus.processing }
                 });
-                return;
+
+                taskToTrigger = {
+                    id: `task-${scene.id}-audio-${Date.now()}`,
+                    projectId,
+                    sceneId: scene.id,
+                    action: 'generate_audio',
+                    params: {
+                        text: scene.narration,
+                        voice: project.voice_name,
+                        provider: project.tts_provider
+                    },
+                    status: 'pending',
+                    createdAt: new Date()
+                };
+                break;
             }
-            if (scene.audio_status === SceneStatus.queued || scene.audio_status === SceneStatus.processing || scene.audio_status === SceneStatus.loading) {
+
+            if (scene.audio_status === SceneStatus.processing || scene.audio_status === SceneStatus.loading) {
                 return;
             }
             if (scene.audio_status === SceneStatus.failed) {
                 return;
             }
+        }
 
-            // If both completed, move to next scene (loop continues)
+        if (taskToTrigger) {
+            // Trigger Worker via API (Fire and Forget)
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+            console.log(`[WorkflowService] Triggering worker for task ${taskToTrigger.id} at ${baseUrl}`);
+
+            fetch(`${baseUrl}/api/workflow/process`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(taskToTrigger)
+            }).catch(err => console.error('[WorkflowService] Failed to trigger worker:', err));
+
+            return;
         }
 
         // If we reach here, all scenes are completed (or failed/ignored).
