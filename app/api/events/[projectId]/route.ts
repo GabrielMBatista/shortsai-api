@@ -64,7 +64,10 @@ export async function GET(
                             audioStatus: s.audio_status,
                             imageUrl: s.image_url,
                             audioUrl: s.audio_url,
-                            errorMessage: s.error_message
+                            errorMessage: s.error_message,
+                            visualDescription: s.visual_description,
+                            narration: s.narration,
+                            durationSeconds: s.duration_seconds
                         })),
                         bgMusicStatus: project.bg_music_status,
                         bgMusicUrl: project.bg_music_url

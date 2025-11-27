@@ -311,6 +311,7 @@ export class WorkflowService {
         // Check Music Queue
         if (project.bg_music_status === MusicStatus.queued) {
             await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: MusicStatus.loading } }); // Use loading/processing
+            broadcastProjectUpdate(projectId, { type: 'music_update', status: 'loading' });
             taskToTrigger = {
                 id: `task-${projectId}-music-${Date.now()}`,
                 projectId,
@@ -326,6 +327,7 @@ export class WorkflowService {
             for (const scene of project.scenes) {
                 if (scene.image_status === SceneStatus.queued) {
                     await prisma.scene.update({ where: { id: scene.id }, data: { image_status: SceneStatus.processing } });
+                    broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'image', status: 'processing' });
                     taskToTrigger = {
                         id: `task-${scene.id}-image-${Date.now()}`,
                         projectId, sceneId: scene.id, action: 'generate_image',
@@ -336,6 +338,7 @@ export class WorkflowService {
                 }
                 if (scene.audio_status === SceneStatus.queued) {
                     await prisma.scene.update({ where: { id: scene.id }, data: { audio_status: SceneStatus.processing } });
+                    broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'audio', status: 'processing' });
                     taskToTrigger = {
                         id: `task-${scene.id}-audio-${Date.now()}`,
                         projectId, sceneId: scene.id, action: 'generate_audio',
@@ -365,6 +368,7 @@ export class WorkflowService {
                 for (const scene of project.scenes) {
                     if (scene.image_status === SceneStatus.pending) {
                         await prisma.scene.update({ where: { id: scene.id }, data: { image_status: SceneStatus.processing } });
+                        broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'image', status: 'processing' });
                         taskToTrigger = {
                             id: `task-${scene.id}-image-${Date.now()}`,
                             projectId, sceneId: scene.id, action: 'generate_image',
@@ -375,6 +379,7 @@ export class WorkflowService {
                     }
                     if (scene.audio_status === SceneStatus.pending) {
                         await prisma.scene.update({ where: { id: scene.id }, data: { audio_status: SceneStatus.processing } });
+                        broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'audio', status: 'processing' });
                         taskToTrigger = {
                             id: `task-${scene.id}-audio-${Date.now()}`,
                             projectId, sceneId: scene.id, action: 'generate_audio',
@@ -391,6 +396,7 @@ export class WorkflowService {
                 // Or just if music is pending and nothing else is processing.
                 if (!taskToTrigger && project.include_music && project.bg_music_status === MusicStatus.pending) {
                     await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: MusicStatus.loading } });
+                    broadcastProjectUpdate(projectId, { type: 'music_update', status: 'loading' });
                     taskToTrigger = {
                         id: `task-${projectId}-music-${Date.now()}`,
                         projectId,
@@ -442,6 +448,26 @@ export class WorkflowService {
 
         if (!project) return null;
 
+        let generationMessage = '';
+        if (project.status === 'generating' || project.status === 'processing') {
+            const processingScene = project.scenes.find(s =>
+                s.image_status === SceneStatus.processing ||
+                s.image_status === SceneStatus.loading ||
+                s.audio_status === SceneStatus.processing ||
+                s.audio_status === SceneStatus.loading
+            );
+
+            if (processingScene) {
+                if (processingScene.image_status === SceneStatus.processing || processingScene.image_status === SceneStatus.loading) {
+                    generationMessage = `Generating Image for Scene ${processingScene.scene_number}...`;
+                } else {
+                    generationMessage = `Generating Audio for Scene ${processingScene.scene_number}...`;
+                }
+            } else if (project.bg_music_status === MusicStatus.loading) {
+                generationMessage = "Generating Background Music...";
+            }
+        }
+
         return {
             projectStatus: project.status,
             scenes: project.scenes.map(s => ({
@@ -456,7 +482,8 @@ export class WorkflowService {
                 narration: s.narration
             })),
             music_status: project.bg_music_status,
-            music_url: project.bg_music_url
+            music_url: project.bg_music_url,
+            generationMessage
         };
     }
 }

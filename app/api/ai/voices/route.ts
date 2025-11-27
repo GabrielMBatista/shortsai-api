@@ -8,7 +8,7 @@ export async function POST(request: Request) {
         const body = await request.json();
         const { apiKeys } = body;
 
-        const voices = await AIService.getElevenLabsVoices("frontend-request", apiKeys?.elevenLabs);
+        const voices = await AIService.getElevenLabsVoices("frontend-request", apiKeys?.elevenlabs);
 
         return NextResponse.json({ voices });
     } catch (error: any) {
