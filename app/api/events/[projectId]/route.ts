@@ -1,48 +1,21 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { addConnection, removeConnection } from '@/lib/sse/sse-service';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-// Global map to track active SSE connections per project
-const connections = new Map<string, Set<ReadableStreamDefaultController>>();
-
-// Helper to broadcast updates to all connected clients for a project
-export function broadcastProjectUpdate(projectId: string, data: any) {
-    const controllers = connections.get(projectId);
-    if (!controllers || controllers.size === 0) return;
-
-    const message = `data: ${JSON.stringify(data)}\n\n`;
-    const encoder = new TextEncoder();
-    const encoded = encoder.encode(message);
-
-    controllers.forEach(controller => {
-        try {
-            controller.enqueue(encoded);
-        } catch (err) {
-            console.error('[SSE] Failed to send to client:', err);
-            controllers.delete(controller);
-        }
-    });
-}
 
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ projectId: string }> }
 ) {
     const { projectId } = await params;
-
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
         async start(controller) {
             console.log(`[SSE] Client connected to project ${projectId}`);
-
-            // Register this controller
-            if (!connections.has(projectId)) {
-                connections.set(projectId, new Set());
-            }
-            connections.get(projectId)!.add(controller);
+            addConnection(projectId, controller);
 
             // Send initial state
             try {
@@ -92,10 +65,7 @@ export async function GET(
             request.signal.addEventListener('abort', () => {
                 console.log(`[SSE] Client disconnected from project ${projectId}`);
                 clearInterval(keepAlive);
-                connections.get(projectId)?.delete(controller);
-                if (connections.get(projectId)?.size === 0) {
-                    connections.delete(projectId);
-                }
+                removeConnection(projectId, controller);
             });
         }
     });

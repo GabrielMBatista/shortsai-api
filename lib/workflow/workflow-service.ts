@@ -1,6 +1,6 @@
 import { prisma } from '../prisma';
 import { Project, Scene, SceneStatus, MusicStatus } from '@prisma/client';
-import { broadcastProjectUpdate } from '@/app/api/events/[projectId]/route';
+import { broadcastProjectUpdate } from '@/lib/sse/sse-service';
 
 export type WorkflowAction =
     | 'generate_all'
@@ -113,12 +113,58 @@ export class WorkflowService {
                     data: { bg_music_status: MusicStatus.pending }
                 });
             }
+        } else {
+            // If not forced, only set DRAFT items to pending
+            await prisma.scene.updateMany({
+                where: { project_id: project.id, image_status: SceneStatus.draft },
+                data: { image_status: SceneStatus.pending }
+            });
+            await prisma.scene.updateMany({
+                where: { project_id: project.id, audio_status: SceneStatus.draft },
+                data: { audio_status: SceneStatus.pending }
+            });
+
+            if (project.include_music && (project.bg_music_status === MusicStatus.draft || !project.bg_music_status)) {
+                await prisma.project.update({
+                    where: { id: project.id },
+                    data: { bg_music_status: MusicStatus.pending }
+                });
+            }
         }
 
         await prisma.project.update({
             where: { id: project.id },
             data: { status: 'generating' }
         });
+        broadcastProjectUpdate(project.id, { type: 'project_status_update', status: 'generating' });
+
+        // Re-fetch project to get updated scene statuses for broadcast
+        const updatedProject = await prisma.project.findUnique({
+            where: { id: project.id },
+            include: { scenes: { orderBy: { scene_number: 'asc' } } }
+        });
+
+        if (updatedProject) {
+            const broadcastPayload = {
+                type: 'init',
+                projectStatus: updatedProject.status,
+                scenes: updatedProject.scenes.map(s => ({
+                    id: s.id,
+                    sceneNumber: s.scene_number,
+                    imageStatus: s.image_status,
+                    audioStatus: s.audio_status,
+                    imageUrl: s.image_url,
+                    audioUrl: s.audio_url,
+                    errorMessage: s.error_message,
+                    visualDescription: s.visual_description,
+                    narration: s.narration,
+                    durationSeconds: s.duration_seconds
+                })),
+                bgMusicStatus: updatedProject.bg_music_status,
+                bgMusicUrl: updatedProject.bg_music_url
+            };
+            broadcastProjectUpdate(project.id, broadcastPayload);
+        }
 
         // Trigger the first available task
         await this.dispatchNext(project.id, apiKeys);
@@ -137,6 +183,7 @@ export class WorkflowService {
                 [attemptsField]: force ? 0 : undefined
             }
         });
+        broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId, field: type, status: 'queued' });
 
         // Trigger immediately
         await this.dispatchNext(projectId, apiKeys);
@@ -151,24 +198,111 @@ export class WorkflowService {
                 bg_music_status: MusicStatus.queued
             }
         });
+        broadcastProjectUpdate(projectId, { type: 'music_update', status: 'queued' });
 
         await this.dispatchNext(projectId, apiKeys);
         return { message: 'Music queued' };
     }
 
     private static async cancelGeneration(projectId: string) {
+        // Update project status to failed
         await prisma.project.update({
             where: { id: projectId },
             data: { status: 'failed' }
         });
+
+        // Also mark any processing/loading/queued/pending scenes as failed so they stop spinning
+        await prisma.scene.updateMany({
+            where: {
+                project_id: projectId,
+                OR: [
+                    { image_status: { in: [SceneStatus.processing, SceneStatus.loading, SceneStatus.queued, SceneStatus.pending] } },
+                    { audio_status: { in: [SceneStatus.processing, SceneStatus.loading, SceneStatus.queued, SceneStatus.pending] } }
+                ]
+            },
+            data: {
+                // We can't easily update both fields conditionally in one query without raw SQL or multiple queries.
+                // For simplicity, let's just set the project to failed and let the user retry.
+                // But to stop spinners, we need to update the specific status fields.
+                // Let's use updateMany for each status type if needed, or just rely on the project status?
+                // The frontend checks scene status for spinners.
+                // So we MUST update scene statuses.
+            }
+        });
+
+        // Since we can't conditionally update fields in updateMany easily (e.g. set image_status=failed ONLY if it was processing),
+        // we might need to iterate or use raw query.
+        // For now, let's just broadcast the project failure. The frontend SHOULD stop spinners if project is failed?
+        // If the frontend logic is `isImageLoading = ...`, it depends on scene status.
+        // Let's explicitly fail the active tasks.
+
+        const project = await prisma.project.findUnique({
+            where: { id: projectId },
+            include: { scenes: true }
+        });
+
+        if (project) {
+            for (const scene of project.scenes) {
+                let updated = false;
+                const data: any = {};
+                if (['processing', 'loading', 'queued', 'pending'].includes(scene.image_status)) {
+                    data.image_status = SceneStatus.failed;
+                    updated = true;
+                }
+                if (['processing', 'loading', 'queued', 'pending'].includes(scene.audio_status)) {
+                    data.audio_status = SceneStatus.failed;
+                    updated = true;
+                }
+                if (updated) {
+                    await prisma.scene.update({ where: { id: scene.id }, data });
+                }
+            }
+            if (['processing', 'loading', 'queued', 'pending'].includes(project.bg_music_status || '')) {
+                await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: MusicStatus.failed } });
+            }
+        }
+
+        broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'failed' });
+        // We should also broadcast scene updates so individual spinners stop immediately
+        // But a full state refresh or project status update might be enough if frontend handles it.
+        // Let's send a full init/state update to be sure.
+        const updatedProject = await prisma.project.findUnique({
+            where: { id: projectId },
+            include: { scenes: { orderBy: { scene_number: 'asc' } } }
+        });
+        if (updatedProject) {
+            const broadcastPayload = {
+                type: 'init',
+                projectStatus: updatedProject.status,
+                scenes: updatedProject.scenes.map(s => ({
+                    id: s.id,
+                    sceneNumber: s.scene_number,
+                    imageStatus: s.image_status,
+                    audioStatus: s.audio_status,
+                    imageUrl: s.image_url,
+                    audioUrl: s.audio_url,
+                    errorMessage: s.error_message,
+                    visualDescription: s.visual_description,
+                    narration: s.narration,
+                    durationSeconds: s.duration_seconds
+                })),
+                bgMusicStatus: updatedProject.bg_music_status,
+                bgMusicUrl: updatedProject.bg_music_url
+            };
+            broadcastProjectUpdate(projectId, broadcastPayload);
+        }
+
         return { message: 'Generation cancelled' };
     }
+
+
 
     private static async pauseGeneration(projectId: string) {
         await prisma.project.update({
             where: { id: projectId },
             data: { status: 'paused' }
         });
+        broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'paused' });
         return { message: 'Generation paused' };
     }
 
@@ -177,6 +311,7 @@ export class WorkflowService {
             where: { id: project.id },
             data: { status: 'generating' }
         });
+        broadcastProjectUpdate(project.id, { type: 'project_status_update', status: 'generating' });
         // Kickstart queue
         await this.dispatchNext(project.id);
         return { message: 'Generation resumed' };
@@ -428,6 +563,24 @@ export class WorkflowService {
                 where: { id: projectId },
                 data: { status: 'completed' }
             });
+            broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'completed' });
+        } else if (project.status === 'generating') {
+            // If we are 'generating' but found nothing to do, and we are NOT completed...
+            // It implies we have failed items or we are stuck.
+            // Check if we have any failed items that are blocking completion.
+            const hasFailures = project.scenes.some(s =>
+                s.image_status === SceneStatus.failed || s.audio_status === SceneStatus.failed
+            ) || (project.include_music && project.bg_music_status === MusicStatus.failed);
+
+            if (hasFailures) {
+                // If we have failures and nothing else is running (we know nothing is running because we fell through),
+                // then we should mark the project as failed.
+                await prisma.project.update({
+                    where: { id: projectId },
+                    data: { status: 'failed' }
+                });
+                broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'failed' });
+            }
         }
     }
 
