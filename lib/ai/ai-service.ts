@@ -123,14 +123,18 @@ const blobToBase64 = async (blob: Blob): Promise<string> => {
 
 export class AIService {
 
-    private static async getGeminiClient(userId: string) {
+    private static async getGeminiClient(userId: string, providedKey?: string) {
+        if (providedKey) return new GoogleGenAI({ apiKey: providedKey });
+
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
         const apiKey = keys?.gemini_key || process.env.GEMINI_API_KEY;
         if (!apiKey) throw new Error("Gemini API Key missing");
         return new GoogleGenAI({ apiKey });
     }
 
-    private static async getElevenLabsKey(userId: string) {
+    private static async getElevenLabsKey(userId: string, providedKey?: string) {
+        if (providedKey) return providedKey;
+
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
         const apiKey = keys?.elevenlabs_key || process.env.ELEVENLABS_API_KEY;
         if (!apiKey) throw new Error("ElevenLabs API Key missing");
@@ -143,8 +147,8 @@ export class AIService {
         // await prisma.usageLog.create(...)
     }
 
-    static async generateImage(userId: string, prompt: string, style: string): Promise<string> {
-        const ai = await this.getGeminiClient(userId);
+    static async generateImage(userId: string, prompt: string, style: string, keys?: { gemini?: string }): Promise<string> {
+        const ai = await this.getGeminiClient(userId, keys?.gemini);
 
         const fullPrompt = `Create a vertical (9:16) image in the style of ${style}. Scene: ${prompt}.`;
 
@@ -181,16 +185,16 @@ export class AIService {
         }));
     }
 
-    static async generateAudio(userId: string, text: string, voice: string, provider: string): Promise<string> {
+    static async generateAudio(userId: string, text: string, voice: string, provider: string, keys?: { gemini?: string, elevenlabs?: string }): Promise<string> {
         if (provider === 'elevenlabs') {
-            return this.generateElevenLabsAudio(userId, text, voice);
+            return this.generateElevenLabsAudio(userId, text, voice, keys?.elevenlabs);
         } else {
-            return this.generateGeminiAudio(userId, text, voice);
+            return this.generateGeminiAudio(userId, text, voice, keys?.gemini);
         }
     }
 
-    private static async generateElevenLabsAudio(userId: string, text: string, voiceId: string): Promise<string> {
-        const apiKey = await this.getElevenLabsKey(userId);
+    private static async generateElevenLabsAudio(userId: string, text: string, voiceId: string, providedKey?: string): Promise<string> {
+        const apiKey = await this.getElevenLabsKey(userId, providedKey);
         const ELEVEN_LABS_API_URL = "https://api.elevenlabs.io/v1";
 
         // Default to multilingual v2 for better language support
@@ -226,8 +230,8 @@ export class AIService {
         }));
     }
 
-    private static async generateGeminiAudio(userId: string, text: string, voiceName: string): Promise<string> {
-        const ai = await this.getGeminiClient(userId);
+    private static async generateGeminiAudio(userId: string, text: string, voiceName: string, providedKey?: string): Promise<string> {
+        const ai = await this.getGeminiClient(userId, providedKey);
 
         return generationQueue.add(() => retryWithBackoff(async () => {
             const response = await ai.models.generateContent({

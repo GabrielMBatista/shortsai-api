@@ -18,6 +18,10 @@ export interface WorkflowCommand {
     sceneId?: string;
     action: WorkflowAction;
     force?: boolean;
+    apiKeys?: {
+        gemini?: string;
+        elevenlabs?: string;
+    };
 }
 
 export type WorkflowTaskParams =
@@ -33,6 +37,10 @@ export interface WorkflowTask {
     params: WorkflowTaskParams;
     status: 'pending' | 'dispatched' | 'completed' | 'failed';
     createdAt: Date;
+    apiKeys?: {
+        gemini?: string;
+        elevenlabs?: string;
+    };
 }
 
 // In-memory task queue (for MVP/Vercel serverless limitations, this resets on cold start)
@@ -46,7 +54,7 @@ export interface WorkflowTask {
 export class WorkflowService {
 
     static async handleCommand(command: WorkflowCommand) {
-        const { projectId, sceneId, action, force } = command;
+        const { projectId, sceneId, action, force, apiKeys } = command;
 
         const project = await prisma.project.findUnique({
             where: { id: projectId },
@@ -57,15 +65,15 @@ export class WorkflowService {
 
         switch (action) {
             case 'generate_all':
-                return this.startGeneration(project, force);
+                return this.startGeneration(project, force, apiKeys);
             case 'generate_image':
             case 'regenerate_image':
                 if (!sceneId) throw new Error('Scene ID required');
-                return this.queueSceneAsset(projectId, sceneId, 'image', force);
+                return this.queueSceneAsset(projectId, sceneId, 'image', force, apiKeys);
             case 'generate_audio':
             case 'regenerate_audio':
                 if (!sceneId) throw new Error('Scene ID required');
-                return this.queueSceneAsset(projectId, sceneId, 'audio', force);
+                return this.queueSceneAsset(projectId, sceneId, 'audio', force, apiKeys);
             case 'cancel':
                 return this.cancelGeneration(projectId);
             case 'pause':
@@ -80,7 +88,7 @@ export class WorkflowService {
         }
     }
 
-    private static async startGeneration(project: Project & { scenes: Scene[] }, force?: boolean) {
+    private static async startGeneration(project: Project & { scenes: Scene[] }, force?: boolean, apiKeys?: any) {
         // If force, reset all to pending
         if (force) {
             await prisma.scene.updateMany({
@@ -101,12 +109,12 @@ export class WorkflowService {
         });
 
         // Trigger the first available task
-        await this.dispatchNext(project.id);
+        await this.dispatchNext(project.id, apiKeys);
 
         return { message: 'Generation started' };
     }
 
-    private static async queueSceneAsset(projectId: string, sceneId: string, type: 'image' | 'audio', force?: boolean) {
+    private static async queueSceneAsset(projectId: string, sceneId: string, type: 'image' | 'audio', force?: boolean, apiKeys?: any) {
         const field = `${type}_status` as keyof Scene;
         const attemptsField = `${type}_attempts` as keyof Scene;
 
@@ -127,7 +135,7 @@ export class WorkflowService {
         await prisma.$transaction(updates);
 
         // Trigger immediately
-        await this.dispatchNext(projectId);
+        await this.dispatchNext(projectId, apiKeys);
 
         return { message: `${type} queued` };
     }
@@ -290,7 +298,7 @@ export class WorkflowService {
     }
 
     // Smart Dispatcher: Enforces Sequence & Triggers Worker
-    private static async dispatchNext(projectId: string) {
+    private static async dispatchNext(projectId: string, apiKeys?: any) {
         const project = await prisma.project.findUnique({
             where: { id: projectId },
             include: { scenes: { orderBy: { scene_number: 'asc' } } }
@@ -324,7 +332,8 @@ export class WorkflowService {
                         height: 1920
                     },
                     status: 'pending',
-                    createdAt: new Date()
+                    createdAt: new Date(),
+                    apiKeys // Pass keys if available
                 };
                 break; // Found one, stop searching
             }
@@ -354,7 +363,8 @@ export class WorkflowService {
                         provider: project.tts_provider
                     },
                     status: 'pending',
-                    createdAt: new Date()
+                    createdAt: new Date(),
+                    apiKeys // Pass keys if available
                 };
                 break;
             }

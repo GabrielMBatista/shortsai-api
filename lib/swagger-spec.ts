@@ -576,5 +576,41 @@ export const openApiSpec: OpenAPIObject = {
                 },
             },
         },
+        '/workflow/command': {
+            post: {
+                summary: 'Send a workflow command',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['projectId', 'action'],
+                                properties: {
+                                    projectId: { type: 'string', format: 'uuid' },
+                                    sceneId: { type: 'string', format: 'uuid' },
+                                    action: {
+                                        type: 'string',
+                                        enum: ['generate_all', 'generate_image', 'generate_audio', 'regenerate_image', 'regenerate_audio', 'cancel', 'pause', 'resume', 'skip_scene']
+                                    },
+                                    force: { type: 'boolean' },
+                                    apiKeys: {
+                                        type: 'object',
+                                        properties: {
+                                            gemini: { type: 'string' },
+                                            elevenlabs: { type: 'string' },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': { description: 'Command accepted' },
+                    '400': { description: 'Invalid command' },
+                },
+            },
+        },
     },
 };

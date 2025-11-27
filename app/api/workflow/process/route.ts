@@ -31,7 +31,8 @@ export async function POST(request: Request) {
                         outputUrl = await AIService.generateImage(
                             project.user_id,
                             task.params.prompt,
-                            project.style
+                            project.style,
+                            task.apiKeys
                         );
                     }
                     break;
@@ -41,7 +42,8 @@ export async function POST(request: Request) {
                             project.user_id,
                             task.params.text,
                             task.params.voice,
-                            task.params.provider
+                            task.params.provider,
+                            task.apiKeys
                         );
                     }
                     break;
