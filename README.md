@@ -7,6 +7,9 @@ This is the backend service for ShortsAI Studio, built with **Next.js App Router
 ## ✨ Key Features
 
 *   **Workflow Orchestration**: Manages complex, multi-step generation tasks (Script -> Images -> Audio -> Music) with dependency handling and retry logic.
+*   **Concurrency Control**: Implements **Project Locking** (`/lock` / `/unlock`) to prevent race conditions during multi-tab usage or rapid-fire edits.
+*   **Idempotency & Usage Tracking**: Deduplicated usage logging ensures accurate quota consumption even with network retries.
+*   **Monetization Strategy**: Script generation engine (`gemini-2.5-flash`) is tuned to produce content strictly between **65s-90s** by default, maximizing monetization eligibility.
 *   **Real-time Updates**: Uses **Server-Sent Events (SSE)** to push granular progress updates (e.g., "Generating Image for Scene 3...") to the frontend.
 *   **Soft Delete Architecture**: Implements safe deletion for scenes and projects using `deleted_at` timestamps, preventing accidental data loss.
 *   **Hybrid AI Integration**: Orchestrates calls to Google Gemini 2.5, ElevenLabs, and other AI providers.
