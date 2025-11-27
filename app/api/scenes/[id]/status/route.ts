@@ -31,12 +31,8 @@ export async function PATCH(
             return NextResponse.json({ error: 'Scene not found' }, { status: 404 });
         }
 
-        // 1. Validate Project Status
-        if (scene.project.status !== 'generating') {
-            return NextResponse.json({
-                error: `Project status is ${scene.project.status}, must be 'generating'`,
-            }, { status: 400 });
-        }
+        // 1. Validate Project Status (Relaxed)
+        // if (scene.project.status !== 'generating') { ... }
 
         // 2. Validate Transition & Force Regen
         const currentStatus = scene[`${type}_status` as keyof typeof scene] as SceneStatus;

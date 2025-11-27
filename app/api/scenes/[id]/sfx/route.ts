@@ -26,18 +26,12 @@ export async function PATCH(
             return NextResponse.json({ error: 'Scene not found' }, { status: 404 });
         }
 
-        // 1. Validate Project Status
-        if (scene.project.status !== 'generating') {
-            return NextResponse.json({
-                error: `Project status is ${scene.project.status}, must be 'generating'`,
-            }, { status: 400 });
-        }
+        // 1. Validate Project Status (Relaxed)
+        // if (scene.project.status !== 'generating') { ... }
 
-        // 2. Validate Current Status
+        // 2. Validate Current Status (Relaxed)
         if (scene.sfx_status !== 'processing') {
-            return NextResponse.json({
-                error: `Cannot save SFX. Current status is ${scene.sfx_status}, expected 'processing'.`,
-            }, { status: 409 });
+            console.warn(`Saving SFX for scene ${id} but status is ${scene.sfx_status} (expected 'processing'). Proceeding anyway.`);
         }
 
         // 3. Update

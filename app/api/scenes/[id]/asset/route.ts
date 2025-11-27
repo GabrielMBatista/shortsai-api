@@ -37,20 +37,13 @@ export async function PATCH(
             return NextResponse.json({ error: 'Scene not found' }, { status: 404 });
         }
 
-        // 1. Validate Project Status
-        if (scene.project.status !== 'generating') {
-            return NextResponse.json({
-                error: `Project status is ${scene.project.status}, must be 'generating'`,
-            }, { status: 400 });
-        }
+        // 1. Validate Project Status (Relaxed for manual/paused operations)
+        // if (scene.project.status !== 'generating') { ... }
 
-        // 2. Validate Current Scene Status
-        // We expect the scene to be in 'loading' state for this asset type before we save it.
+        // 2. Validate Current Scene Status (Relaxed)
         const currentStatus = scene[`${type}_status` as keyof typeof scene] as SceneStatus;
         if (currentStatus !== 'processing') {
-            return NextResponse.json({
-                error: `Cannot save asset. Current status is ${currentStatus}, expected 'processing'.`,
-            }, { status: 409 });
+            console.warn(`Saving asset for scene ${id} but status is ${currentStatus} (expected 'processing'). Proceeding anyway.`);
         }
 
         // 3. Update
