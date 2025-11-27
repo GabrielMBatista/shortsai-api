@@ -19,15 +19,36 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
-        const scene = await prisma.scene.create({
-            data: {
+        // Check for existing active scene with same number to prevent duplicates
+        const existingScene = await prisma.scene.findFirst({
+            where: {
                 project_id,
                 scene_number,
-                visual_description,
-                narration,
-                duration_seconds,
-            },
+                deleted_at: null
+            }
         });
+
+        let scene;
+        if (existingScene) {
+            scene = await prisma.scene.update({
+                where: { id: existingScene.id },
+                data: {
+                    visual_description,
+                    narration,
+                    duration_seconds,
+                },
+            });
+        } else {
+            scene = await prisma.scene.create({
+                data: {
+                    project_id,
+                    scene_number,
+                    visual_description,
+                    narration,
+                    duration_seconds,
+                },
+            });
+        }
 
         return NextResponse.json(scene);
     } catch (error: any) {

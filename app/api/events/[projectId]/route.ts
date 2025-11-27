@@ -106,6 +106,7 @@ export async function GET(
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
             'X-Accel-Buffering': 'no', // Disable nginx buffering
+            'Access-Control-Allow-Origin': '*',
         },
     });
 }

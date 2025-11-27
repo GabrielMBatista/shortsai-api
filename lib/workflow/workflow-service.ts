@@ -130,21 +130,13 @@ export class WorkflowService {
         const field = `${type}_status` as keyof Scene;
         const attemptsField = `${type}_attempts` as keyof Scene;
 
-        const updates: any[] = [
-            prisma.scene.update({
-                where: { id: sceneId },
-                data: {
-                    [field]: SceneStatus.queued,
-                    [attemptsField]: force ? 0 : undefined
-                }
-            }),
-            prisma.project.update({
-                where: { id: projectId },
-                data: { status: 'generating' }
-            })
-        ];
-
-        await prisma.$transaction(updates);
+        await prisma.scene.update({
+            where: { id: sceneId },
+            data: {
+                [field]: SceneStatus.queued,
+                [attemptsField]: force ? 0 : undefined
+            }
+        });
 
         // Trigger immediately
         await this.dispatchNext(projectId, apiKeys);
@@ -156,8 +148,7 @@ export class WorkflowService {
         await prisma.project.update({
             where: { id: projectId },
             data: {
-                bg_music_status: MusicStatus.queued,
-                status: 'generating'
+                bg_music_status: MusicStatus.queued
             }
         });
 
@@ -301,7 +292,7 @@ export class WorkflowService {
             include: { scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } } }
         });
 
-        if (!project || project.status !== 'generating') return;
+        if (!project) return;
 
         let taskToTrigger: WorkflowTask | null = null;
 
@@ -351,7 +342,7 @@ export class WorkflowService {
         }
 
         // 2. AUTOMATIC SEQUENCE: If no manual tasks, find next PENDING
-        if (!taskToTrigger) {
+        if (!taskToTrigger && project.status === 'generating') {
             // Check if anything is currently processing (Global Sequence Lock for Auto-Flow)
             // We allow manual tasks to run in parallel with auto tasks (if we wanted), 
             // but here we prioritize manual. If manual ran, we returned.
@@ -449,7 +440,7 @@ export class WorkflowService {
         if (!project) return null;
 
         let generationMessage = '';
-        if (project.status === 'generating' || project.status === 'processing') {
+        if (project.status === 'generating') {
             const processingScene = project.scenes.find(s =>
                 s.image_status === SceneStatus.processing ||
                 s.image_status === SceneStatus.loading ||
