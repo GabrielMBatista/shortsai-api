@@ -81,28 +81,28 @@ export class WorkflowService {
     }
 
     private static async startGeneration(project: Project & { scenes: Scene[] }, force?: boolean) {
+        // If force, reset all to pending
+        if (force) {
+            await prisma.scene.updateMany({
+                where: { project_id: project.id },
+                data: {
+                    image_status: SceneStatus.pending,
+                    audio_status: SceneStatus.pending,
+                    image_attempts: 0,
+                    audio_attempts: 0,
+                    error_message: null
+                }
+            });
+        }
+
         await prisma.project.update({
             where: { id: project.id },
             data: { status: 'generating' }
         });
 
-        const updates: any[] = [];
-        for (const scene of project.scenes) {
-            if (scene.image_status === SceneStatus.pending || (force && scene.image_status === SceneStatus.completed)) {
-                updates.push(prisma.scene.update({
-                    where: { id: scene.id },
-                    data: { image_status: SceneStatus.queued, image_attempts: 0 }
-                }));
-            }
-            if (scene.audio_status === SceneStatus.pending || (force && scene.audio_status === SceneStatus.completed)) {
-                updates.push(prisma.scene.update({
-                    where: { id: scene.id },
-                    data: { audio_status: SceneStatus.queued, audio_attempts: 0 }
-                }));
-            }
-        }
+        // Trigger the first available task
+        await this.dispatchNext(project.id);
 
-        await prisma.$transaction(updates);
         return { message: 'Generation started' };
     }
 
@@ -133,14 +133,13 @@ export class WorkflowService {
             where: { id: projectId },
             data: { status: 'failed' }
         });
-        // In a real queue, we would clear tasks. Here, 'failed' status stops the poller from picking them up.
         return { message: 'Generation cancelled' };
     }
 
     private static async pauseGeneration(projectId: string) {
         await prisma.project.update({
             where: { id: projectId },
-            data: { status: 'paused' } // Now supported in schema
+            data: { status: 'paused' }
         });
         return { message: 'Generation paused' };
     }
@@ -150,16 +149,13 @@ export class WorkflowService {
             where: { id: project.id },
             data: { status: 'generating' }
         });
+        // Kickstart queue
+        await this.dispatchNext(project.id);
         return { message: 'Generation resumed' };
     }
 
     private static async skipScene(sceneId: string) {
-        // Mark scene assets as completed or skipped? User said "marca cena como skipped".
-        // We don't have 'skipped' enum. We'll use 'completed' for now or 'failed'?
-        // 'failed' might trigger retry. 'completed' is safer for flow advancement.
-        // Or we add 'skipped' to enum?
-        // Let's use 'completed' but maybe add a note in error_message "Skipped by user".
-        await prisma.scene.update({
+        const scene = await prisma.scene.update({
             where: { id: sceneId },
             data: {
                 image_status: SceneStatus.completed,
@@ -167,6 +163,10 @@ export class WorkflowService {
                 error_message: 'Skipped by user'
             }
         });
+
+        // Try to move to next
+        await this.dispatchNext(scene.project_id);
+
         return { message: 'Scene skipped' };
     }
 
@@ -180,18 +180,13 @@ export class WorkflowService {
 
         if (!project || project.status !== 'generating') return null;
 
-        // Priority: Image -> Audio -> Next Scene
-        // Concurrency: 1 scene at a time (strict serial)
+        // Simple Poller: Find first QUEUED task
+        // We do NOT enforce sequence here. Sequence is enforced by dispatchNext queuing items one by one.
+        // This allows "Regen" (manual queue) to be picked up immediately even if out of order.
 
         for (const scene of project.scenes) {
-            // If this scene is processing, skip it (wait for it to finish) but check others
-            if (scene.image_status === SceneStatus.processing || scene.audio_status === SceneStatus.processing) {
-                continue;
-            }
-
-            // If image queued, return image task
             if (scene.image_status === SceneStatus.queued) {
-                // Mark as processing immediately to prevent double dispatch
+                // Lock it
                 await prisma.scene.update({
                     where: { id: scene.id },
                     data: { image_status: SceneStatus.processing }
@@ -212,8 +207,8 @@ export class WorkflowService {
                 };
             }
 
-            // If image done but audio queued, return audio task
-            if (scene.image_status === SceneStatus.completed && scene.audio_status === SceneStatus.queued) {
+            if (scene.audio_status === SceneStatus.queued) {
+                // Lock it
                 await prisma.scene.update({
                     where: { id: scene.id },
                     data: { audio_status: SceneStatus.processing }
@@ -233,18 +228,7 @@ export class WorkflowService {
                     createdAt: new Date()
                 };
             }
-
-            // Continue to next scene (allow parallel/out-of-order execution)
         }
-
-        // If all scenes done, check music
-        // TODO: Music logic
-
-        // If everything done, mark project completed
-        await prisma.project.update({
-            where: { id: projectId },
-            data: { status: 'completed' }
-        });
 
         return null;
     }
@@ -263,6 +247,10 @@ export class WorkflowService {
                     error_message: null
                 }
             });
+
+            // Trigger next step in sequence
+            await this.dispatchNext(projectId);
+
         } else {
             // Handle failure & Retry logic
             const scene = await prisma.scene.findUnique({ where: { id: sceneId } });
@@ -283,6 +271,76 @@ export class WorkflowService {
                     [fieldAttempts]: attempts,
                     error_message: error
                 }
+            });
+
+            if (newStatus === SceneStatus.failed) {
+                // If failed, we might want to stop or continue?
+                // For now, let's stop auto-dispatch. User needs to fix or skip.
+                // Or we could auto-skip? No, better to pause.
+                await prisma.project.update({
+                    where: { id: projectId },
+                    data: { status: 'failed' }
+                });
+            }
+        }
+    }
+
+    // Smart Dispatcher: Enforces Sequence
+    private static async dispatchNext(projectId: string) {
+        const project = await prisma.project.findUnique({
+            where: { id: projectId },
+            include: { scenes: { orderBy: { scene_number: 'asc' } } }
+        });
+
+        if (!project || project.status !== 'generating') return;
+
+        // Find the first asset that needs generation
+        for (const scene of project.scenes) {
+            // 1. Image
+            if (scene.image_status === SceneStatus.pending) {
+                await prisma.scene.update({
+                    where: { id: scene.id },
+                    data: { image_status: SceneStatus.queued }
+                });
+                return; // Only queue ONE thing at a time to enforce sequence
+            }
+            if (scene.image_status === SceneStatus.queued || scene.image_status === SceneStatus.processing || scene.image_status === SceneStatus.loading) {
+                return; // Busy with this, wait.
+            }
+            if (scene.image_status === SceneStatus.failed) {
+                return; // Blocked by failure
+            }
+
+            // 2. Audio (only after image is done? Or parallel? User said "Sequence scene by scene")
+            // Let's assume Image -> Audio per scene.
+            if (scene.audio_status === SceneStatus.pending) {
+                await prisma.scene.update({
+                    where: { id: scene.id },
+                    data: { audio_status: SceneStatus.queued }
+                });
+                return;
+            }
+            if (scene.audio_status === SceneStatus.queued || scene.audio_status === SceneStatus.processing || scene.audio_status === SceneStatus.loading) {
+                return;
+            }
+            if (scene.audio_status === SceneStatus.failed) {
+                return;
+            }
+
+            // If both completed, move to next scene (loop continues)
+        }
+
+        // If we reach here, all scenes are completed (or failed/ignored).
+        // Check if truly all completed
+        const allDone = project.scenes.every(s =>
+            s.image_status === SceneStatus.completed &&
+            s.audio_status === SceneStatus.completed
+        );
+
+        if (allDone) {
+            await prisma.project.update({
+                where: { id: projectId },
+                data: { status: 'completed' }
             });
         }
     }
@@ -308,7 +366,6 @@ export class WorkflowService {
                 visual_description: s.visual_description,
                 narration: s.narration
             })),
-            // Add queue info if needed
         };
     }
 }
