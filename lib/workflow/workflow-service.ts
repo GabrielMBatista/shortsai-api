@@ -1,5 +1,6 @@
-import { prisma } from '@/lib/prisma';
-import { SceneStatus, ProjectStatus, Project, Scene, MusicStatus } from '@prisma/client';
+import { prisma } from '../prisma';
+import { Project, Scene, SceneStatus, MusicStatus } from '@prisma/client';
+import { broadcastProjectUpdate } from '@/app/api/events/[projectId]/route';
 
 export type WorkflowAction =
     | 'generate_all'
@@ -109,7 +110,7 @@ export class WorkflowService {
             if (project.include_music) {
                 await prisma.project.update({
                     where: { id: project.id },
-                    data: { bg_music_status: 'pending' }
+                    data: { bg_music_status: MusicStatus.pending }
                 });
             }
         }
@@ -155,7 +156,7 @@ export class WorkflowService {
         await prisma.project.update({
             where: { id: projectId },
             data: {
-                bg_music_status: 'queued',
+                bg_music_status: MusicStatus.queued,
                 status: 'generating'
             }
         });
@@ -221,12 +222,13 @@ export class WorkflowService {
             if (status === 'completed') {
                 await prisma.project.update({
                     where: { id: projectId },
-                    data: { bg_music_status: 'completed', bg_music_url: outputUrl }
+                    data: { bg_music_status: MusicStatus.completed, bg_music_url: outputUrl }
                 });
+                broadcastProjectUpdate(projectId, { type: 'music_update', status: 'completed', url: outputUrl });
             } else {
                 await prisma.project.update({
                     where: { id: projectId },
-                    data: { bg_music_status: 'failed' } // No retry logic for music yet
+                    data: { bg_music_status: MusicStatus.failed } // No retry logic for music yet
                 });
             }
             await this.dispatchNext(projectId, apiKeys);
@@ -248,6 +250,9 @@ export class WorkflowService {
                     error_message: null
                 }
             });
+
+            // Broadcast update via SSE
+            broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId, field: type, status: 'completed', url: outputUrl });
 
             // Trigger next step in sequence
             await this.dispatchNext(projectId, apiKeys);
@@ -304,8 +309,8 @@ export class WorkflowService {
         // These bypass the sequential check.
 
         // Check Music Queue
-        if (project.bg_music_status === 'queued') {
-            await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: 'loading' } }); // Use loading/processing
+        if (project.bg_music_status === MusicStatus.queued) {
+            await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: MusicStatus.loading } }); // Use loading/processing
             taskToTrigger = {
                 id: `task-${projectId}-music-${Date.now()}`,
                 projectId,
@@ -384,8 +389,8 @@ export class WorkflowService {
                 // Usually music is last or parallel. Let's make it parallel if we want, 
                 // but for now let's stick to sequence: Images -> Audio -> Music?
                 // Or just if music is pending and nothing else is processing.
-                if (!taskToTrigger && project.include_music && project.bg_music_status === 'pending') {
-                    await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: 'loading' } });
+                if (!taskToTrigger && project.include_music && project.bg_music_status === MusicStatus.pending) {
+                    await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: MusicStatus.loading } });
                     taskToTrigger = {
                         id: `task-${projectId}-music-${Date.now()}`,
                         projectId,
@@ -419,7 +424,7 @@ export class WorkflowService {
             s.image_status === SceneStatus.completed &&
             s.audio_status === SceneStatus.completed
         );
-        const musicDone = !project.include_music || project.bg_music_status === 'completed';
+        const musicDone = !project.include_music || project.bg_music_status === MusicStatus.completed;
 
         if (allScenesDone && musicDone) {
             await prisma.project.update({
