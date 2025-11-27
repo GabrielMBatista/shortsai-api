@@ -29,7 +29,7 @@ export const openApiSpec: OpenAPIObject = {
                     voice_name: { type: 'string' },
                     tts_provider: { type: 'string', enum: ['gemini', 'elevenlabs'] },
                     language: { type: 'string', default: 'en' },
-                    status: { type: 'string', enum: ['draft', 'generating', 'completed', 'failed'] },
+                    status: { type: 'string', enum: ['draft', 'generating', 'completed', 'failed', 'paused'] },
                     include_music: { type: 'boolean' },
                     bg_music_prompt: { type: 'string' },
                     bg_music_url: { type: 'string' },

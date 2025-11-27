@@ -130,18 +130,11 @@ export class WorkflowService {
     }
 
     private static async pauseGeneration(projectId: string) {
-        // We don't have a 'paused' status in enum yet, assuming we keep 'generating' but maybe add a flag?
-        // Or we can use 'draft' as pause? No, that resets.
-        // Let's assume we just stop returning tasks.
-        // For now, we'll just log it. To truly pause, we need a status.
-        // Let's toggle a flag or use a specific status if we could modify schema.
-        // Given constraints, we'll assume 'failed' or 'draft' pauses, but 'resume' needs to know where we were.
-        // Let's stick to 'generating' but maybe we need a separate "is_paused" field?
-        // For MVP, we will just not implement true pause persistence without schema change.
-        // But wait, user said "Pausa / Resume... trava fila".
-        // We can implement this by checking a "paused" state in memory or DB.
-        // Let's assume we can't change schema right now. We'll skip for now or use a workaround.
-        return { message: 'Generation paused (not fully persisted)' };
+        await prisma.project.update({
+            where: { id: projectId },
+            data: { status: 'paused' } // Now supported in schema
+        });
+        return { message: 'Generation paused' };
     }
 
     private static async resumeGeneration(project: any) {
