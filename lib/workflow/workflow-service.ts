@@ -61,11 +61,11 @@ export class WorkflowService {
             case 'generate_image':
             case 'regenerate_image':
                 if (!sceneId) throw new Error('Scene ID required');
-                return this.queueSceneAsset(sceneId, 'image', force);
+                return this.queueSceneAsset(projectId, sceneId, 'image', force);
             case 'generate_audio':
             case 'regenerate_audio':
                 if (!sceneId) throw new Error('Scene ID required');
-                return this.queueSceneAsset(sceneId, 'audio', force);
+                return this.queueSceneAsset(projectId, sceneId, 'audio', force);
             case 'cancel':
                 return this.cancelGeneration(projectId);
             case 'pause':
@@ -106,17 +106,25 @@ export class WorkflowService {
         return { message: 'Generation started' };
     }
 
-    private static async queueSceneAsset(sceneId: string, type: 'image' | 'audio', force?: boolean) {
+    private static async queueSceneAsset(projectId: string, sceneId: string, type: 'image' | 'audio', force?: boolean) {
         const field = `${type}_status` as keyof Scene;
         const attemptsField = `${type}_attempts` as keyof Scene;
 
-        await prisma.scene.update({
-            where: { id: sceneId },
-            data: {
-                [field]: SceneStatus.queued,
-                [attemptsField]: force ? 0 : undefined // Reset attempts only if forced? Or always? User said "Force... zera histórico".
-            }
-        });
+        const updates: any[] = [
+            prisma.scene.update({
+                where: { id: sceneId },
+                data: {
+                    [field]: SceneStatus.queued,
+                    [attemptsField]: force ? 0 : undefined
+                }
+            }),
+            prisma.project.update({
+                where: { id: projectId },
+                data: { status: 'generating' }
+            })
+        ];
+
+        await prisma.$transaction(updates);
         return { message: `${type} queued` };
     }
 
