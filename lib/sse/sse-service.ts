@@ -1,7 +1,15 @@
 
 // Global map to track active SSE connections per project
 // Key: projectId, Value: Set of Controllers
-const connections = new Map<string, Set<ReadableStreamDefaultController>>();
+// Global map to track active SSE connections per project
+// Key: projectId, Value: Set of Controllers
+const globalForSSE = global as unknown as { sseConnections: Map<string, Set<ReadableStreamDefaultController>> };
+
+const connections = globalForSSE.sseConnections || new Map<string, Set<ReadableStreamDefaultController>>();
+
+if (process.env.NODE_ENV !== 'production') {
+    globalForSSE.sseConnections = connections;
+}
 
 export function addConnection(projectId: string, controller: ReadableStreamDefaultController) {
     if (!connections.has(projectId)) {
