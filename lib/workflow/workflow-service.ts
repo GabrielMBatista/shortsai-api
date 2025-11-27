@@ -184,9 +184,9 @@ export class WorkflowService {
         // Concurrency: 1 scene at a time (strict serial)
 
         for (const scene of project.scenes) {
-            // If this scene is processing, return null (wait for it to finish)
+            // If this scene is processing, skip it (wait for it to finish) but check others
             if (scene.image_status === SceneStatus.processing || scene.audio_status === SceneStatus.processing) {
-                return null;
+                continue;
             }
 
             // If image queued, return image task
@@ -234,10 +234,7 @@ export class WorkflowService {
                 };
             }
 
-            // If this scene is not fully completed, we stop here (serial execution)
-            if (scene.image_status !== SceneStatus.completed || scene.audio_status !== SceneStatus.completed) {
-                return null;
-            }
+            // Continue to next scene (allow parallel/out-of-order execution)
         }
 
         // If all scenes done, check music
