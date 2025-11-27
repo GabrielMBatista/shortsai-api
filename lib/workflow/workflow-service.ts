@@ -61,7 +61,7 @@ export class WorkflowService {
 
         const project = await prisma.project.findUnique({
             where: { id: projectId },
-            include: { scenes: { orderBy: { scene_number: 'asc' } } }
+            include: { scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } } }
         });
 
         if (!project) throw new Error('Project not found');
@@ -298,7 +298,7 @@ export class WorkflowService {
     private static async dispatchNext(projectId: string, apiKeys?: any) {
         const project = await prisma.project.findUnique({
             where: { id: projectId },
-            include: { scenes: { orderBy: { scene_number: 'asc' } } }
+            include: { scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } } }
         });
 
         if (!project || project.status !== 'generating') return;
@@ -443,7 +443,7 @@ export class WorkflowService {
     static async getState(projectId: string) {
         const project = await prisma.project.findUnique({
             where: { id: projectId },
-            include: { scenes: { orderBy: { scene_number: 'asc' } } }
+            include: { scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } } }
         });
 
         if (!project) return null;

@@ -99,6 +99,7 @@ export async function GET(request: Request) {
                 generated_description: true,
                 status: true,
                 scenes: {
+                    where: { deleted_at: null },
                     select: {
                         id: true,
                         image_status: true,

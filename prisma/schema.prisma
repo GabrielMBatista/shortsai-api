@@ -147,10 +147,12 @@ model Scene {
   audio_attempts     Int         @default(0)
   sfx_attempts       Int         @default(0)
   created_at         DateTime    @default(now())
+  deleted_at         DateTime?
 
   project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
 
-  @@unique([project_id, scene_number])
+  // Removed unique constraint to allow soft deletes with reordering
+  // @@unique([project_id, scene_number])
   @@index([project_id])
   @@index([project_id, scene_number])
   @@map("scenes")

@@ -13,7 +13,7 @@ export async function GET(
         const project = await prisma.project.findUnique({
             where: { id },
             include: {
-                scenes: { orderBy: { scene_number: 'asc' } },
+                scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } },
                 characters: true,
             },
         });
@@ -62,7 +62,7 @@ export async function PATCH(
         const project = await prisma.project.update({
             where: { id },
             data: updateData,
-            include: { characters: true, scenes: { orderBy: { scene_number: 'asc' } } }
+            include: { characters: true, scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } } }
         });
 
         return NextResponse.json(project);

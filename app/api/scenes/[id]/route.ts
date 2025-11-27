@@ -39,8 +39,9 @@ export async function DELETE(
 ) {
     try {
         const { id } = await params;
-        await prisma.scene.delete({
+        await prisma.scene.update({
             where: { id },
+            data: { deleted_at: new Date() }
         });
 
         return NextResponse.json({ success: true });
