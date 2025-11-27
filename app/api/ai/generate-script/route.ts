@@ -17,7 +17,7 @@ export async function POST(request: Request) {
             topic,
             style,
             language || 'English',
-            durationConfig || { min: 30, max: 60 },
+            durationConfig || { min: 65, max: 90 },
             apiKeys
         );
 

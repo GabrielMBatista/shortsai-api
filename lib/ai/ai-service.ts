@@ -309,9 +309,9 @@ export class AIService {
     ): Promise<any> {
         const ai = await this.getGeminiClient(userId, keys?.gemini);
 
-        // Safe defaults
-        const minSeconds = durationConfig?.min || 55;
-        const maxSeconds = durationConfig?.max || 65;
+        // Safe defaults - Defaulting to 60s+ for monetization if not specified
+        const minSeconds = durationConfig?.min || 65;
+        const maxSeconds = durationConfig?.max || 90;
         const sceneInstruction = durationConfig?.targetScenes
             ? `Strictly generate exactly ${durationConfig.targetScenes} scenes.`
             : `Generate between ${Math.max(3, Math.floor(minSeconds / 10))} to ${Math.min(15, Math.ceil(maxSeconds / 5))} scenes based on pacing.`;
@@ -324,7 +324,7 @@ export class AIService {
         IMPORTANT CONFIGURATION & TIMING REQUIREMENTS:
         1. The TOTAL duration of the video must be STRICTLY between ${minSeconds} and ${maxSeconds} seconds.
         2. ${sceneInstruction}
-        3. Ensure the sum of all 'durationSeconds' falls within the ${minSeconds}s - ${maxSeconds}s range.
+        3. Ensure the sum of all 'durationSeconds' falls within the ${minSeconds}s - ${maxSeconds}s range. DO NOT produce a video shorter than ${minSeconds} seconds.
         
         CRITICAL INSTRUCTIONS:
         - If the user's input/prompt is short, you MUST EXPAND the narrative.
