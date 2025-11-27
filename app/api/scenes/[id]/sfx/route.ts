@@ -34,9 +34,9 @@ export async function PATCH(
         }
 
         // 2. Validate Current Status
-        if (scene.sfx_status !== 'loading') {
+        if (scene.sfx_status !== 'processing') {
             return NextResponse.json({
-                error: `Cannot save SFX. Current status is ${scene.sfx_status}, expected 'loading'.`,
+                error: `Cannot save SFX. Current status is ${scene.sfx_status}, expected 'processing'.`,
             }, { status: 409 });
         }
 

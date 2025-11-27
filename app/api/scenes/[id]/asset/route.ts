@@ -47,9 +47,9 @@ export async function PATCH(
         // 2. Validate Current Scene Status
         // We expect the scene to be in 'loading' state for this asset type before we save it.
         const currentStatus = scene[`${type}_status` as keyof typeof scene] as SceneStatus;
-        if (currentStatus !== 'loading') {
+        if (currentStatus !== 'processing') {
             return NextResponse.json({
-                error: `Cannot save asset. Current status is ${currentStatus}, expected 'loading'.`,
+                error: `Cannot save asset. Current status is ${currentStatus}, expected 'processing'.`,
             }, { status: 409 });
         }
 

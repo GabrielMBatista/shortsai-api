@@ -32,8 +32,11 @@ enum MusicStatus {
 
 enum SceneStatus {
   pending
+  queued
+  processing
   loading
   completed
+  failed
   error
 }
 
