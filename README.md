@@ -1,36 +1,107 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🧠 ShortsAI API
 
-## Getting Started
+> **Backend Orchestration Engine for ShortsAI Studio**
 
-First, run the development server:
+This is the backend service for ShortsAI Studio, built with **Next.js App Router**, **Prisma ORM**, and **PostgreSQL**. It handles project orchestration, asset generation workflows, user management, and real-time updates via Server-Sent Events (SSE).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## ✨ Key Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+*   **Workflow Orchestration**: Manages complex, multi-step generation tasks (Script -> Images -> Audio -> Music) with dependency handling and retry logic.
+*   **Real-time Updates**: Uses **Server-Sent Events (SSE)** to push granular progress updates (e.g., "Generating Image for Scene 3...") to the frontend.
+*   **Soft Delete Architecture**: Implements safe deletion for scenes and projects using `deleted_at` timestamps, preventing accidental data loss.
+*   **Hybrid AI Integration**: Orchestrates calls to Google Gemini 2.5, ElevenLabs, and other AI providers.
+*   **Robust Database Schema**: Fully typed PostgreSQL schema with Prisma, supporting complex relations (Projects, Scenes, Characters, Usage Logs).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🛠️ Tech Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+*   **Framework**: Next.js 15 (App Router)
+*   **Database**: PostgreSQL
+*   **ORM**: Prisma
+*   **API Style**: REST + SSE
+*   **Language**: TypeScript
 
-## Learn More
+## 🚀 Getting Started
 
-To learn more about Next.js, take a look at the following resources:
+### Prerequisites
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+*   Node.js v18+
+*   PostgreSQL Database (Local or Cloud like Supabase/Neon)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Installation
 
-## Deploy on Vercel
+1.  Clone the repository:
+    ```bash
+    git clone <repository-url>
+    cd shortsai-api
+    ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+3.  Configure Environment Variables:
+    Create a `.env` file in the root directory:
+    ```env
+    DATABASE_URL="postgresql://user:password@localhost:5432/shortsai"
+    NEXT_PUBLIC_APP_URL="http://localhost:3000"
+    ELEVENLABS_API_KEY="your-key-here"
+    GEMINI_API_KEY="your-key-here"
+    ```
+
+4.  Initialize Database:
+    ```bash
+    # Run migrations
+    npx prisma migrate dev
+
+    # Seed initial data (optional)
+    npx prisma db seed
+    ```
+
+5.  Run Development Server:
+    ```bash
+    npm run dev
+    ```
+
+    The API will be available at `http://localhost:3000`.
+
+## 📚 API Documentation
+
+### Core Endpoints
+
+*   **Projects**
+    *   `GET /api/projects`: List projects (filters soft-deleted scenes).
+    *   `POST /api/projects`: Create a new project.
+    *   `GET /api/projects/[id]`: Get full project details.
+    *   `PATCH /api/projects/[id]`: Update project metadata.
+
+*   **Scenes**
+    *   `PATCH /api/scenes/[id]`: Update scene content.
+    *   `DELETE /api/scenes/[id]`: Soft delete a scene.
+
+*   **Workflow**
+    *   `POST /api/workflow/command`: Trigger actions (generate_all, regenerate_image, etc.).
+    *   `GET /api/events/[projectId]`: SSE endpoint for real-time status.
+
+*   **Users & Assets**
+    *   `POST /api/users`: Sync user profile.
+    *   `POST /api/characters`: Manage consistent characters.
+
+## 🛡️ Database Management
+
+*   **Migration**: `npx prisma migrate dev --name <migration_name>`
+*   **Studio (GUI)**: `npx prisma studio`
+*   **Generate Client**: `npx prisma generate` (Run after schema changes)
+
+## 🔄 Workflow Architecture
+
+The backend uses a **stateless dispatcher** pattern.
+1.  Frontend sends a command (`/api/workflow/command`).
+2.  Backend updates DB status to `queued` or `pending`.
+3.  Dispatcher finds the next available task and triggers a background worker (`/api/workflow/process`).
+4.  Worker executes the AI task and updates the DB.
+5.  Updates are broadcasted to the frontend via SSE.
+
+---
+
+Developed for ShortsAI Studio.
