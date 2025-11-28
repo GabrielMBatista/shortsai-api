@@ -647,7 +647,7 @@ export class WorkflowService {
         }
 
         if (taskToTrigger) {
-            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+            const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3333';
             console.log(`[WorkflowService] Triggering worker for task ${taskToTrigger.id} at ${baseUrl}`);
 
             fetch(`${baseUrl}/api/workflow/process`, {

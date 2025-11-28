@@ -9,11 +9,11 @@ export const openApiSpec: OpenAPIObject = {
     },
     servers: [
         {
-            url: 'http://localhost:3000/api',
+            url: 'http://localhost:3333/api',
             description: 'Production Server',
         },
         {
-            url: 'http://localhost:3000/api',
+            url: 'http://localhost:3333/api',
             description: 'Local Development',
         },
     ],
