@@ -12,7 +12,7 @@ This is the backend service for ShortsAI Studio, built with **Next.js App Router
 *   **Monetization Strategy**: Script generation engine (`gemini-2.5-flash`) is tuned to produce content strictly between **65s-90s** by default, maximizing monetization eligibility.
 *   **Real-time Updates**: Uses **Server-Sent Events (SSE)** to push granular progress updates (e.g., "Generating Image for Scene 3...") to the frontend.
 *   **Soft Delete Architecture**: Implements safe deletion for scenes and projects using `deleted_at` timestamps, preventing accidental data loss.
-*   **Hybrid AI Integration**: Orchestrates calls to Google Gemini 2.5, ElevenLabs, and other AI providers.
+*   **Hybrid AI Integration**: Orchestrates calls to Google Gemini 2.5, ElevenLabs, Groq, and other AI providers.
 *   **Robust Database Schema**: Fully typed PostgreSQL schema with Prisma, supporting complex relations (Projects, Scenes, Characters, Usage Logs).
 
 ## 🛠️ Tech Stack
@@ -50,6 +50,7 @@ This is the backend service for ShortsAI Studio, built with **Next.js App Router
     NEXT_PUBLIC_APP_URL="http://localhost:3000"
     ELEVENLABS_API_KEY="your-key-here"
     GEMINI_API_KEY="your-key-here"
+    GROQ_API_KEY="your-key-here"
     ```
 
 4.  Initialize Database:
