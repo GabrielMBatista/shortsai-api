@@ -71,6 +71,32 @@ Este é o serviço backend para o ShortsAI Studio, construído com **Next.js App
 
     A API estará disponível em `http://localhost:3000`.
 
+### 🐳 Executando com Docker
+
+O projeto inclui um `docker-compose.yml` para orquestrar todo o ambiente (API, Banco de Dados e Frontend).
+
+**Nota**: O arquivo `docker-compose.yml` assume que o diretório `shortai-studio` está localizado ao lado deste diretório (`../shortai-studio`).
+
+#### 1. Configuração (Banco de Dados)
+
+*   **Opção A: Banco Externo (Produção/Padrão)**
+    Crie um arquivo `.env` neste diretório com sua `DATABASE_URL` externa. O container do banco local **não** será iniciado.
+    ```bash
+    docker-compose up -d --build
+    ```
+
+*   **Opção B: Banco Local (Desenvolvimento)**
+    Para iniciar um container Postgres local junto com a aplicação:
+    ```bash
+    docker-compose --profile local up -d --build
+    ```
+
+#### 2. Serviços Disponíveis
+
+*   **API**: http://localhost:3333
+*   **Frontend**: http://localhost:3000
+*   **Banco (Local)**: Porta 5432
+
 ## 📚 Documentação da API
 
 ### Endpoints Principais
