@@ -4,6 +4,8 @@
 
 This is the backend service for ShortsAI Studio, built with **Next.js App Router**, **Prisma ORM**, and **PostgreSQL**. It handles project orchestration, asset generation workflows, user management, and real-time updates via Server-Sent Events (SSE).
 
+> **Architecture Note**: The choice of **Next.js** for the backend was strategic to validate the feasibility of hosting a functional and scalable backend directly on **Vercel** infrastructure, leveraging its Serverless and Edge Functions capabilities.
+
 ## ✨ Key Features
 
 *   **Workflow Orchestration**: Manages complex, multi-step generation tasks (Script -> Images -> Audio -> Music) with dependency handling and retry logic.
