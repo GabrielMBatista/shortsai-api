@@ -5,8 +5,10 @@ import { broadcastProjectUpdate } from '@/lib/sse/sse-service';
 export type WorkflowAction =
     | 'generate_all'
     | 'generate_image'
+    | 'generate_all_images'
     | 'regenerate_image'
     | 'generate_audio'
+    | 'generate_all_audio'
     | 'regenerate_audio'
     | 'generate_music'
     | 'cancel'
@@ -73,10 +75,14 @@ export class WorkflowService {
             case 'regenerate_image':
                 if (!sceneId) throw new Error('Scene ID required');
                 return this.queueSceneAsset(projectId, sceneId, 'image', force, apiKeys);
+            case 'generate_all_images':
+                return this.generateAllImages(project, force, apiKeys);
             case 'generate_audio':
             case 'regenerate_audio':
                 if (!sceneId) throw new Error('Scene ID required');
                 return this.queueSceneAsset(projectId, sceneId, 'audio', force, apiKeys);
+            case 'generate_all_audio':
+                return this.generateAllAudio(project, force, apiKeys);
             case 'generate_music':
                 return this.queueMusic(projectId, force, apiKeys);
             case 'cancel':
@@ -170,6 +176,114 @@ export class WorkflowService {
         await this.dispatchNext(project.id, apiKeys);
 
         return { message: 'Generation started' };
+    }
+
+    private static async generateAllImages(project: Project, force?: boolean, apiKeys?: any) {
+        if (force) {
+            await prisma.scene.updateMany({
+                where: { project_id: project.id },
+                data: {
+                    image_status: SceneStatus.pending,
+                    image_attempts: 0,
+                    error_message: null
+                }
+            });
+        } else {
+            await prisma.scene.updateMany({
+                where: { project_id: project.id, image_status: SceneStatus.draft },
+                data: { image_status: SceneStatus.pending }
+            });
+        }
+
+        await prisma.project.update({
+            where: { id: project.id },
+            data: { status: 'generating' }
+        });
+        broadcastProjectUpdate(project.id, { type: 'project_status_update', status: 'generating' });
+
+        const updatedProject = await prisma.project.findUnique({
+            where: { id: project.id },
+            include: { scenes: { orderBy: { scene_number: 'asc' } } }
+        });
+
+        if (updatedProject) {
+            const broadcastPayload = {
+                type: 'init',
+                projectStatus: updatedProject.status,
+                scenes: updatedProject.scenes.map(s => ({
+                    id: s.id,
+                    sceneNumber: s.scene_number,
+                    imageStatus: s.image_status,
+                    audioStatus: s.audio_status,
+                    imageUrl: s.image_url,
+                    audioUrl: s.audio_url,
+                    errorMessage: s.error_message,
+                    visualDescription: s.visual_description,
+                    narration: s.narration,
+                    durationSeconds: s.duration_seconds
+                })),
+                bgMusicStatus: updatedProject.bg_music_status,
+                bgMusicUrl: updatedProject.bg_music_url
+            };
+            broadcastProjectUpdate(project.id, broadcastPayload);
+        }
+
+        await this.dispatchNext(project.id, apiKeys);
+        return { message: 'Image generation started' };
+    }
+
+    private static async generateAllAudio(project: Project, force?: boolean, apiKeys?: any) {
+        if (force) {
+            await prisma.scene.updateMany({
+                where: { project_id: project.id },
+                data: {
+                    audio_status: SceneStatus.pending,
+                    audio_attempts: 0,
+                    error_message: null
+                }
+            });
+        } else {
+            await prisma.scene.updateMany({
+                where: { project_id: project.id, audio_status: SceneStatus.draft },
+                data: { audio_status: SceneStatus.pending }
+            });
+        }
+
+        await prisma.project.update({
+            where: { id: project.id },
+            data: { status: 'generating' }
+        });
+        broadcastProjectUpdate(project.id, { type: 'project_status_update', status: 'generating' });
+
+        const updatedProject = await prisma.project.findUnique({
+            where: { id: project.id },
+            include: { scenes: { orderBy: { scene_number: 'asc' } } }
+        });
+
+        if (updatedProject) {
+            const broadcastPayload = {
+                type: 'init',
+                projectStatus: updatedProject.status,
+                scenes: updatedProject.scenes.map(s => ({
+                    id: s.id,
+                    sceneNumber: s.scene_number,
+                    imageStatus: s.image_status,
+                    audioStatus: s.audio_status,
+                    imageUrl: s.image_url,
+                    audioUrl: s.audio_url,
+                    errorMessage: s.error_message,
+                    visualDescription: s.visual_description,
+                    narration: s.narration,
+                    durationSeconds: s.duration_seconds
+                })),
+                bgMusicStatus: updatedProject.bg_music_status,
+                bgMusicUrl: updatedProject.bg_music_url
+            };
+            broadcastProjectUpdate(project.id, broadcastPayload);
+        }
+
+        await this.dispatchNext(project.id, apiKeys);
+        return { message: 'Audio generation started' };
     }
 
     private static async queueSceneAsset(projectId: string, sceneId: string, type: 'image' | 'audio', force?: boolean, apiKeys?: any) {
@@ -335,14 +449,14 @@ export class WorkflowService {
 
     // --- Task Polling Logic ---
 
+    // --- Task Polling Logic ---
+
     static async getNextTask(projectId: string): Promise<WorkflowTask | null> {
         // This method is legacy/polling based. dispatchNext handles the push.
-        // But if we use a pull model, we can implement it here.
-        // For now, we rely on dispatchNext pushing to the worker endpoint.
         return null;
     }
 
-    static async completeTask(projectId: string, sceneId: string | undefined, type: 'image' | 'audio' | 'music', status: 'completed' | 'failed', outputUrl?: string, error?: string, apiKeys?: any) {
+    static async completeTask(projectId: string, sceneId: string | undefined, type: 'image' | 'audio' | 'music', status: 'completed' | 'failed', outputUrl?: string, error?: string, apiKeys?: any, timings?: any[], duration?: number) {
 
         if (type === 'music') {
             if (status === 'completed') {
@@ -373,12 +487,22 @@ export class WorkflowService {
                 data: {
                     [fieldStatus]: SceneStatus.completed,
                     [fieldUrl]: outputUrl,
+                    word_timings: timings || undefined,
+                    duration_seconds: duration ? Math.ceil(duration) : undefined,
                     error_message: null
                 }
             });
 
             // Broadcast update via SSE
-            broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId, field: type, status: 'completed', url: outputUrl });
+            broadcastProjectUpdate(projectId, {
+                type: 'scene_update',
+                sceneId,
+                field: type,
+                status: 'completed',
+                url: outputUrl,
+                timings: timings,
+                duration: duration ? Math.ceil(duration) : undefined
+            });
 
             // Trigger next step in sequence
             await this.dispatchNext(projectId, apiKeys);
@@ -406,13 +530,11 @@ export class WorkflowService {
             });
 
             if (newStatus === SceneStatus.failed) {
-                // If failed, we might want to stop or continue?
-                // For now, let's stop auto-dispatch. User needs to fix or skip.
-                // Or we could auto-skip? No, better to pause.
                 await prisma.project.update({
                     where: { id: projectId },
                     data: { status: 'failed' }
                 });
+                broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'failed' });
             } else {
                 // If retrying, trigger immediately
                 await this.dispatchNext(projectId, apiKeys);
@@ -432,17 +554,15 @@ export class WorkflowService {
         let taskToTrigger: WorkflowTask | null = null;
 
         // 1. PRIORITY: Check for QUEUED items (Manual Overrides or Retries)
-        // These bypass the sequential check.
-
         // Check Music Queue
         if (project.bg_music_status === MusicStatus.queued) {
-            await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: MusicStatus.loading } }); // Use loading/processing
+            await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: MusicStatus.loading } });
             broadcastProjectUpdate(projectId, { type: 'music_update', status: 'loading' });
             taskToTrigger = {
                 id: `task-${projectId}-music-${Date.now()}`,
                 projectId,
                 action: 'generate_music',
-                params: { prompt: project.bg_music_prompt || "instrumental", duration: 30 }, // Duration is placeholder
+                params: { prompt: project.bg_music_prompt || "instrumental", duration: 30 },
                 status: 'pending',
                 createdAt: new Date(),
                 apiKeys
@@ -478,11 +598,6 @@ export class WorkflowService {
 
         // 2. AUTOMATIC SEQUENCE: If no manual tasks, find next PENDING
         if (!taskToTrigger && project.status === 'generating') {
-            // Check if anything is currently processing (Global Sequence Lock for Auto-Flow)
-            // We allow manual tasks to run in parallel with auto tasks (if we wanted), 
-            // but here we prioritize manual. If manual ran, we returned.
-            // Now we check if we can run the next auto task.
-
             const isProcessing = project.scenes.some(s =>
                 s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
                 s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
@@ -490,7 +605,6 @@ export class WorkflowService {
             );
 
             if (!isProcessing) {
-                // Find first pending
                 for (const scene of project.scenes) {
                     if (scene.image_status === SceneStatus.pending) {
                         await prisma.scene.update({ where: { id: scene.id }, data: { image_status: SceneStatus.processing } });
@@ -516,10 +630,6 @@ export class WorkflowService {
                     }
                 }
 
-                // Check pending music if scenes are done? Or parallel?
-                // Usually music is last or parallel. Let's make it parallel if we want, 
-                // but for now let's stick to sequence: Images -> Audio -> Music?
-                // Or just if music is pending and nothing else is processing.
                 if (!taskToTrigger && project.include_music && project.bg_music_status === MusicStatus.pending) {
                     await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: MusicStatus.loading } });
                     broadcastProjectUpdate(projectId, { type: 'music_update', status: 'loading' });
@@ -537,7 +647,6 @@ export class WorkflowService {
         }
 
         if (taskToTrigger) {
-            // Trigger Worker via API (Fire and Forget)
             const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
             console.log(`[WorkflowService] Triggering worker for task ${taskToTrigger.id} at ${baseUrl}`);
 
@@ -550,8 +659,7 @@ export class WorkflowService {
             return;
         }
 
-        // If we reach here, all scenes are completed (or failed/ignored).
-        // Check if truly all completed
+        // Check completion
         const allScenesDone = project.scenes.every(s =>
             s.image_status === SceneStatus.completed &&
             s.audio_status === SceneStatus.completed
@@ -565,7 +673,6 @@ export class WorkflowService {
             });
             broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'completed' });
         } else if (project.status === 'generating') {
-            // Check if we are still processing anything
             const isProcessing = project.scenes.some(s =>
                 s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
                 s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
@@ -573,9 +680,6 @@ export class WorkflowService {
             );
 
             if (!isProcessing) {
-                // If we are 'generating' but nothing is processing, and we are NOT completed...
-                // It implies we have failed items or we are stuck.
-
                 const hasFailures = project.scenes.some(s =>
                     s.image_status === SceneStatus.failed || s.audio_status === SceneStatus.failed
                 ) || (project.include_music && project.bg_music_status === MusicStatus.failed);
@@ -587,9 +691,6 @@ export class WorkflowService {
                     });
                     broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'failed' });
                 } else {
-                    // Nothing processing, no failures, not completed. Maybe draft items left?
-                    // If we are in auto-generation, we usually ignore drafts unless we forced them to pending.
-                    // If we are here, it means we are done with the sequence.
                     await prisma.project.update({
                         where: { id: projectId },
                         data: { status: 'completed' }
@@ -639,7 +740,8 @@ export class WorkflowService {
                 audio_url: s.audio_url,
                 error: s.error_message,
                 visual_description: s.visual_description,
-                narration: s.narration
+                narration: s.narration,
+                wordTimings: s.word_timings
             })),
             music_status: project.bg_music_status,
             music_url: project.bg_music_url,

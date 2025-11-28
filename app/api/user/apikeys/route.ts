@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { user_id, gemini_key, elevenlabs_key, suno_key } = body;
+        const { user_id, gemini_key, elevenlabs_key, suno_key, groq_key } = body;
 
         if (!user_id) {
             return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
@@ -22,12 +22,14 @@ export async function POST(request: Request) {
                 gemini_key,
                 elevenlabs_key,
                 suno_key,
+                groq_key,
             },
             create: {
                 user_id,
                 gemini_key,
                 elevenlabs_key,
                 suno_key,
+                groq_key,
             },
         });
 
@@ -55,7 +57,8 @@ export async function GET(request: Request) {
             return NextResponse.json({
                 gemini_key: null,
                 elevenlabs_key: null,
-                suno_key: null
+                suno_key: null,
+                groq_key: null
             });
         }
 
@@ -63,6 +66,7 @@ export async function GET(request: Request) {
             gemini_key: apiKeys.gemini_key,
             elevenlabs_key: apiKeys.elevenlabs_key,
             suno_key: apiKeys.suno_key,
+            groq_key: apiKeys.groq_key,
         });
     } catch (error: any) {
         console.error('Error fetching API keys:', error);

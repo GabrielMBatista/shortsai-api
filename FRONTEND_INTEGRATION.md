@@ -1,21 +1,21 @@
-# Frontend Integration Guide: New Workflow & API Keys
+# Guia de Integração Frontend: Novo Workflow e Chaves de API
 
-## Overview
-The generation logic has been moved to the backend to ensure security and robustness. The frontend no longer generates assets directly but sends commands to the backend. API keys can still be provided from the frontend (e.g., from local storage or settings) and will be securely used by the backend.
+## Visão Geral
+A lógica de geração foi movida para o backend para garantir segurança e robustez. O frontend não gera mais assets diretamente, mas envia comandos para o backend. As chaves de API ainda podem ser fornecidas pelo frontend (ex: do armazenamento local ou configurações) e serão usadas de forma segura pelo backend.
 
-## 1. Sending Commands
-Use the `/api/workflow/command` endpoint to control the generation process.
+## 1. Enviando Comandos
+Use o endpoint `/api/workflow/command` para controlar o processo de geração.
 
 ### Endpoint
 `POST /api/workflow/command`
 
-### Payload Structure
+### Estrutura do Payload
 ```typescript
 interface WorkflowCommand {
     projectId: string;
-    sceneId?: string; // Required for single asset regeneration
+    sceneId?: string; // Obrigatório para regeneração de asset único
     action: 'generate_all' | 'regenerate_image' | 'regenerate_audio' | 'pause' | 'resume' | 'cancel';
-    force?: boolean; // If true, overwrites existing assets
+    force?: boolean; // Se true, sobrescreve assets existentes
     apiKeys?: {
         gemini?: string;
         elevenlabs?: string;
@@ -23,9 +23,9 @@ interface WorkflowCommand {
 }
 ```
 
-### Examples
+### Exemplos
 
-#### A. Start Full Generation (Generate All)
+#### A. Iniciar Geração Completa (Generate All)
 ```typescript
 const startGeneration = async (projectId: string, keys: { gemini?: string, elevenlabs?: string }) => {
     await fetch('/api/workflow/command', {
@@ -34,14 +34,14 @@ const startGeneration = async (projectId: string, keys: { gemini?: string, eleve
         body: JSON.stringify({
             projectId,
             action: 'generate_all',
-            force: true, // Optional: restarts from scratch
+            force: true, // Opcional: reinicia do zero
             apiKeys: keys
         })
     });
 };
 ```
 
-#### B. Regenerate Single Image
+#### B. Regenerar Imagem Única
 ```typescript
 const regenerateImage = async (projectId: string, sceneId: string, keys: { gemini?: string }) => {
     await fetch('/api/workflow/command', {
@@ -58,7 +58,7 @@ const regenerateImage = async (projectId: string, sceneId: string, keys: { gemin
 };
 ```
 
-#### C. Regenerate Single Audio
+#### C. Regenerar Áudio Único
 ```typescript
 const regenerateAudio = async (projectId: string, sceneId: string, keys: { elevenlabs?: string }) => {
     await fetch('/api/workflow/command', {
@@ -75,29 +75,30 @@ const regenerateAudio = async (projectId: string, sceneId: string, keys: { eleve
 };
 ```
 
-## 2. Polling for Updates
-The frontend should poll the project status to reflect changes in real-time.
+## 2. Polling para Atualizações
+O frontend deve fazer polling do status do projeto para refletir as mudanças em tempo real.
 
 ### Endpoint
 `GET /api/projects/{id}`
 
-### Logic
-1.  Poll every 2-5 seconds while `project.status === 'generating'`.
-2.  Update the UI with the returned `scenes` array, which contains `image_url`, `audio_url`, `image_status`, and `audio_status`.
-3.  Stop polling when `project.status` is `completed`, `failed`, or `paused`.
+### Lógica
+1.  Faça polling a cada 2-5 segundos enquanto `project.status === 'generating'`.
+2.  Atualize a UI com o array `scenes` retornado, que contém `image_url`, `audio_url`, `image_status` e `audio_status`.
+3.  Pare o polling quando `project.status` for `completed`, `failed` ou `paused`.
 
-## 3. Key Changes from Previous Flow
-1.  **No Client-Side Generation**: Do not call `AIService` or external APIs (OpenAI, ElevenLabs) directly from the browser.
-2.  **Fire and Forget**: The `command` endpoint returns immediately. It does *not* wait for generation to finish.
-## 4. Pre-Workflow AI Tools
-For tasks that happen *before* a project is created (like generating the script or analyzing characters), use the generic AI endpoint.
+## 3. Principais Mudanças do Fluxo Anterior
+1.  **Sem Geração Client-Side**: Não chame `AIService` ou APIs externas (OpenAI, ElevenLabs) diretamente do navegador.
+2.  **Fire and Forget**: O endpoint `command` retorna imediatamente. Ele *não* espera a geração terminar.
+
+## 4. Ferramentas de IA Pré-Workflow
+Para tarefas que acontecem *antes* de um projeto ser criado (como gerar o roteiro ou analisar personagens), use o endpoint genérico de IA.
 
 ### Endpoint
 `POST /api/ai/generate`
 
-### Actions
+### Ações
 
-#### A. Generate Script
+#### A. Gerar Roteiro
 ```typescript
 const generateScript = async (userId: string, topic: string, style: string, language: string, durationConfig: any, keys: { gemini?: string }) => {
     const res = await fetch('/api/ai/generate', {
@@ -111,11 +112,11 @@ const generateScript = async (userId: string, topic: string, style: string, lang
         })
     });
     const data = await res.json();
-    return data.result; // Returns generic JSON script object
+    return data.result; // Retorna objeto de roteiro JSON genérico
 };
 ```
 
-#### B. Analyze Character (for consistent avatars)
+#### B. Analisar Personagem (para avatares consistentes)
 ```typescript
 const analyzeCharacter = async (userId: string, base64Image: string, keys: { gemini?: string }) => {
     const res = await fetch('/api/ai/generate', {
@@ -129,11 +130,11 @@ const analyzeCharacter = async (userId: string, base64Image: string, keys: { gem
         })
     });
     const data = await res.json();
-    return data.result; // Returns string description
+    return data.result; // Retorna descrição em string
 };
 ```
 
-#### C. Optimize Reference Image (Headshot)
+#### C. Otimizar Imagem de Referência (Headshot)
 ```typescript
 const optimizeImage = async (userId: string, base64Image: string, keys: { gemini?: string }) => {
     const res = await fetch('/api/ai/generate', {
@@ -147,6 +148,6 @@ const optimizeImage = async (userId: string, base64Image: string, keys: { gemini
         })
     });
     const data = await res.json();
-    return data.result; // Returns base64 data URI
+    return data.result; // Retorna URI de dados base64
 };
 ```

@@ -185,15 +185,84 @@ export class AIService {
         }));
     }
 
-    static async generateAudio(userId: string, text: string, voice: string, provider: string, keys?: { gemini?: string, elevenlabs?: string }): Promise<string> {
+    private static async getGroqKey(userId: string, providedKey?: string) {
+        if (providedKey) return providedKey;
+
+        const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
+        const apiKey = keys?.groq_key || process.env.GROQ_API_KEY;
+        if (!apiKey) throw new Error("Groq API Key missing");
+        return apiKey;
+    }
+
+    static async generateAudio(userId: string, text: string, voice: string, provider: string, keys?: { gemini?: string, elevenlabs?: string, groq?: string }): Promise<{ url: string, timings?: any[], duration?: number }> {
         if (provider === 'elevenlabs') {
             return this.generateElevenLabsAudio(userId, text, voice, keys?.elevenlabs);
+        } else if (provider === 'groq') {
+            return this.generateGroqAudio(userId, text, voice, keys?.groq);
         } else {
             return this.generateGeminiAudio(userId, text, voice, keys?.gemini);
         }
     }
 
-    private static async generateElevenLabsAudio(userId: string, text: string, voiceId: string, providedKey?: string): Promise<string> {
+    private static async generateGroqAudio(userId: string, text: string, voiceName: string, providedKey?: string): Promise<{ url: string, timings?: any[], duration?: number }> {
+        const apiKey = await this.getGroqKey(userId, providedKey);
+        const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/speech";
+
+        return generationQueue.add(() => retryWithBackoff(async () => {
+            const response = await fetch(GROQ_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: "playai-tts",
+                    input: text,
+                    voice: voiceName,
+                    response_format: "wav" // Request WAV directly
+                })
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`Groq API Error: ${errText}`);
+            }
+
+            await this.trackUsage(userId, 'groq', 'playai-tts', 'audio');
+
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const base64Audio = buffer.toString('base64');
+            const url = `data:audio/wav;base64,${base64Audio}`;
+
+            // Calculate duration from WAV header or file size
+            // WAV header (44 bytes) + PCM data
+            // Assuming 24kHz (or 48kHz?), 16-bit, Mono/Stereo?
+            // Groq PlayAI usually outputs 48kHz or 24kHz.
+            // Let's inspect the header if possible, or estimate.
+            // Standard PlayAI is often 24kHz or 44.1kHz.
+            // Let's assume 24kHz mono 16-bit for now as a fallback, but better to read the header.
+
+            let duration = 5; // Fallback
+            if (buffer.length > 44) {
+                // Read sample rate and byte rate from WAV header
+                const sampleRate = buffer.readUInt32LE(24);
+                const byteRate = buffer.readUInt32LE(28);
+                const dataSize = buffer.readUInt32LE(40);
+
+                if (byteRate > 0 && dataSize > 0) {
+                    duration = dataSize / byteRate;
+                } else {
+                    // Fallback estimation if header is weird
+                    duration = buffer.length / 48000; // Rough guess
+                }
+            }
+
+            return { url, duration };
+        }));
+    }
+
+    private static async generateElevenLabsAudio(userId: string, text: string, voiceId: string, providedKey?: string): Promise<{ url: string, timings?: any[] }> {
         const apiKey = await this.getElevenLabsKey(userId, providedKey);
         const ELEVEN_LABS_API_URL = "https://api.elevenlabs.io/v1";
 
@@ -201,10 +270,11 @@ export class AIService {
         const modelId = "eleven_multilingual_v2";
 
         return generationQueue.add(() => retryWithBackoff(async () => {
-            const response = await fetch(`${ELEVEN_LABS_API_URL}/text-to-speech/${voiceId}`, {
+            // Use the with-timestamps endpoint
+            const response = await fetch(`${ELEVEN_LABS_API_URL}/text-to-speech/${voiceId}/with-timestamps`, {
                 method: 'POST',
                 headers: {
-                    'Accept': 'audio/mpeg',
+                    'Accept': 'application/json', // Expect JSON with base64 audio
                     'Content-Type': 'application/json',
                     'xi-api-key': apiKey
                 },
@@ -222,11 +292,50 @@ export class AIService {
 
             await this.trackUsage(userId, 'elevenlabs', modelId, 'audio');
 
-            const blob = await response.blob();
-            // Convert to Base64 Data URI
-            const base64Audio = await blobToBase64(blob);
-            // ElevenLabs returns MP3, so prefix correctly
-            return `data:audio/mpeg;base64,${base64Audio}`;
+            const data = await response.json();
+            const base64Audio = data.audio_base64;
+            const alignment = data.alignment;
+
+            // Process Alignment (Character to Word)
+            let timings: any[] = [];
+            if (alignment && alignment.characters && alignment.character_start_times_seconds) {
+                const chars = alignment.characters;
+                const starts = alignment.character_start_times_seconds;
+                const ends = alignment.character_end_times_seconds;
+
+                let currentWord = "";
+                let wordStart = -1;
+                let wordEnd = 0;
+
+                for (let i = 0; i < chars.length; i++) {
+                    const char = chars[i];
+                    if (char === ' ') {
+                        if (currentWord) {
+                            timings.push({ word: currentWord, start: wordStart, end: wordEnd });
+                            currentWord = "";
+                            wordStart = -1;
+                        }
+                    } else {
+                        if (wordStart === -1) wordStart = starts[i];
+                        wordEnd = ends[i];
+                        currentWord += char;
+                    }
+                }
+                if (currentWord) {
+                    timings.push({ word: currentWord, start: wordStart, end: wordEnd });
+                }
+            }
+
+            // ElevenLabs returns MP3 in base64
+            const url = `data:audio/mpeg;base64,${base64Audio}`;
+
+            // Calculate duration from alignment (last end time)
+            let duration = 0;
+            if (alignment && alignment.character_end_times_seconds && alignment.character_end_times_seconds.length > 0) {
+                duration = alignment.character_end_times_seconds[alignment.character_end_times_seconds.length - 1];
+            }
+
+            return { url, timings, duration };
         }));
     }
 
@@ -269,7 +378,7 @@ export class AIService {
         return `data:audio/wav;base64,${wavBytes.toString('base64')}`;
     }
 
-    private static async generateGeminiAudio(userId: string, text: string, voiceName: string, providedKey?: string): Promise<string> {
+    private static async generateGeminiAudio(userId: string, text: string, voiceName: string, providedKey?: string): Promise<{ url: string, timings?: any[], duration?: number }> {
         const ai = await this.getGeminiClient(userId, providedKey);
 
         return generationQueue.add(() => retryWithBackoff(async () => {
@@ -291,9 +400,16 @@ export class AIService {
                 // Gemini TTS returns raw PCM data - we need to wrap it in a WAV file structure
                 const wavDataUri = this.createWavFromPcm(rawPcmBase64);
 
-                console.log('[Gemini TTS] Generated WAV audio, size:', wavDataUri.length, 'chars');
+                // Calculate duration: 24kHz sample rate, 16-bit (2 bytes) per sample, Mono
+                // Length in bytes / 2 bytes per sample / 24000 samples per second
+                const pcmLength = rawPcmBase64.length * 0.75; // Base64 approximate length (or decode it)
+                // Better to decode to get exact byte length
+                const binaryString = Buffer.from(rawPcmBase64, 'base64').toString('binary');
+                const duration = binaryString.length / 2 / 24000;
 
-                return wavDataUri;
+                console.log('[Gemini TTS] Generated WAV audio, size:', wavDataUri.length, 'chars', 'Duration:', duration.toFixed(2), 's');
+
+                return { url: wavDataUri, duration };
             }
             throw new Error("Audio generation failed - no inline data");
         }));

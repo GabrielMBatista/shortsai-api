@@ -21,6 +21,7 @@ enum Tier {
 enum TTSProvider {
   gemini
   elevenlabs
+  groq
 }
 
 enum MusicStatus {
@@ -90,6 +91,7 @@ model ApiKey {
   gemini_key     String?
   elevenlabs_key String?
   suno_key       String?
+  groq_key       String?
   updated_at     DateTime @default(now()) @updatedAt
 
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -142,6 +144,7 @@ model Scene {
   audio_status       SceneStatus @default(draft)
   sfx_url            String?
   sfx_status         SceneStatus @default(draft)
+  word_timings       Json?
   error_message      String?
   image_attempts     Int         @default(0)
   audio_attempts     Int         @default(0)

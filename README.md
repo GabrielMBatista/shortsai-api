@@ -1,110 +1,112 @@
 # 🧠 ShortsAI API
 
-> **Backend Orchestration Engine for ShortsAI Studio**
+> **Motor de Orquestração Backend para o ShortsAI Studio**
 
-This is the backend service for ShortsAI Studio, built with **Next.js App Router**, **Prisma ORM**, and **PostgreSQL**. It handles project orchestration, asset generation workflows, user management, and real-time updates via Server-Sent Events (SSE).
+Este é o serviço backend para o ShortsAI Studio, construído com **Next.js App Router**, **Prisma ORM** e **PostgreSQL**. Ele gerencia a orquestração de projetos, fluxos de trabalho de geração de assets, gerenciamento de usuários e atualizações em tempo real via Server-Sent Events (SSE).
 
-## ✨ Key Features
+> **Nota de Arquitetura**: A escolha do **Next.js** para o backend foi estratégica para validar a viabilidade de hospedar um backend funcional e escalável diretamente na infraestrutura da **Vercel**, aproveitando suas capacidades de Serverless e Edge Functions.
 
-*   **Workflow Orchestration**: Manages complex, multi-step generation tasks (Script -> Images -> Audio -> Music) with dependency handling and retry logic.
-*   **Concurrency Control**: Implements **Project Locking** (`/lock` / `/unlock`) to prevent race conditions during multi-tab usage or rapid-fire edits.
-*   **Idempotency & Usage Tracking**: Deduplicated usage logging ensures accurate quota consumption even with network retries.
-*   **Monetization Strategy**: Script generation engine (`gemini-2.5-flash`) is tuned to produce content strictly between **65s-90s** by default, maximizing monetization eligibility.
-*   **Real-time Updates**: Uses **Server-Sent Events (SSE)** to push granular progress updates (e.g., "Generating Image for Scene 3...") to the frontend.
-*   **Soft Delete Architecture**: Implements safe deletion for scenes and projects using `deleted_at` timestamps, preventing accidental data loss.
-*   **Hybrid AI Integration**: Orchestrates calls to Google Gemini 2.5, ElevenLabs, and other AI providers.
-*   **Robust Database Schema**: Fully typed PostgreSQL schema with Prisma, supporting complex relations (Projects, Scenes, Characters, Usage Logs).
+## ✨ Funcionalidades Principais
+
+*   **Orquestração de Workflow**: Gerencia tarefas de geração complexas e em várias etapas (Roteiro -> Imagens -> Áudio -> Música) com tratamento de dependências e lógica de repetição (retry).
+*   **Controle de Concorrência**: Implementa **Bloqueio de Projeto** (`/lock` / `/unlock`) para evitar condições de corrida durante o uso em múltiplas abas ou edições rápidas.
+*   **Idempotência e Rastreamento de Uso**: O registro de uso deduplicado garante o consumo preciso da cota, mesmo com repetições de rede.
+*   **Estratégia de Monetização**: O motor de geração de roteiros (`gemini-2.5-flash`) é ajustado para produzir conteúdo estritamente entre **65s-90s** por padrão, maximizando a elegibilidade para monetização.
+*   **Atualizações em Tempo Real**: Usa **Server-Sent Events (SSE)** para enviar atualizações granulares de progresso (ex: "Gerando Imagem para a Cena 3...") para o frontend.
+*   **Arquitetura de Soft Delete**: Implementa exclusão segura para cenas e projetos usando timestamps `deleted_at`, prevenindo perda acidental de dados.
+*   **Integração Híbrida de IA**: Orquestra chamadas para o Google Gemini 2.5, ElevenLabs e outros provedores de IA.
+*   **Esquema de Banco de Dados Robusto**: Esquema PostgreSQL totalmente tipado com Prisma, suportando relações complexas (Projetos, Cenas, Personagens, Logs de Uso).
 
 ## 🛠️ Tech Stack
 
 *   **Framework**: Next.js 15 (App Router)
-*   **Database**: PostgreSQL
+*   **Banco de Dados**: PostgreSQL
 *   **ORM**: Prisma
-*   **API Style**: REST + SSE
-*   **Language**: TypeScript
+*   **Estilo de API**: REST + SSE
+*   **Linguagem**: TypeScript
 
-## 🚀 Getting Started
+## 🚀 Começando
 
-### Prerequisites
+### Pré-requisitos
 
 *   Node.js v18+
-*   PostgreSQL Database (Local or Cloud like Supabase/Neon)
+*   Banco de Dados PostgreSQL (Local ou Cloud como Supabase/Neon)
 
-### Installation
+### Instalação
 
-1.  Clone the repository:
+1.  Clone o repositório:
     ```bash
     git clone <repository-url>
     cd shortsai-api
     ```
 
-2.  Install dependencies:
+2.  Instale as dependências:
     ```bash
     npm install
     ```
 
-3.  Configure Environment Variables:
-    Create a `.env` file in the root directory:
+3.  Configure as Variáveis de Ambiente:
+    Crie um arquivo `.env` no diretório raiz:
     ```env
     DATABASE_URL="postgresql://user:password@localhost:5432/shortsai"
     NEXT_PUBLIC_APP_URL="http://localhost:3000"
-    ELEVENLABS_API_KEY="your-key-here"
-    GEMINI_API_KEY="your-key-here"
+    ELEVENLABS_API_KEY="sua-chave-aqui"
+    GEMINI_API_KEY="sua-chave-aqui"
     ```
 
-4.  Initialize Database:
+4.  Inicialize o Banco de Dados:
     ```bash
-    # Run migrations
+    # Execute as migrações
     npx prisma migrate dev
 
-    # Seed initial data (optional)
+    # Popule com dados iniciais (opcional)
     npx prisma db seed
     ```
 
-5.  Run Development Server:
+5.  Execute o Servidor de Desenvolvimento:
     ```bash
     npm run dev
     ```
 
-    The API will be available at `http://localhost:3000`.
+    A API estará disponível em `http://localhost:3000`.
 
-## 📚 API Documentation
+## 📚 Documentação da API
 
-### Core Endpoints
+### Endpoints Principais
 
-*   **Projects**
-    *   `GET /api/projects`: List projects (filters soft-deleted scenes).
-    *   `POST /api/projects`: Create a new project.
-    *   `GET /api/projects/[id]`: Get full project details.
-    *   `PATCH /api/projects/[id]`: Update project metadata.
+*   **Projetos**
+    *   `GET /api/projects`: Lista projetos (filtra cenas com soft-delete).
+    *   `POST /api/projects`: Cria um novo projeto.
+    *   `GET /api/projects/[id]`: Obtém detalhes completos do projeto.
+    *   `PATCH /api/projects/[id]`: Atualiza metadados do projeto.
 
-*   **Scenes**
-    *   `PATCH /api/scenes/[id]`: Update scene content.
-    *   `DELETE /api/scenes/[id]`: Soft delete a scene.
+*   **Cenas**
+    *   `PATCH /api/scenes/[id]`: Atualiza conteúdo da cena.
+    *   `DELETE /api/scenes/[id]`: Realiza soft delete em uma cena.
 
 *   **Workflow**
-    *   `POST /api/workflow/command`: Trigger actions (generate_all, regenerate_image, etc.).
-    *   `GET /api/events/[projectId]`: SSE endpoint for real-time status.
+    *   `POST /api/workflow/command`: Dispara ações (generate_all, regenerate_image, etc.).
+    *   `GET /api/events/[projectId]`: Endpoint SSE para status em tempo real.
 
-*   **Users & Assets**
-    *   `POST /api/users`: Sync user profile.
-    *   `POST /api/characters`: Manage consistent characters.
+*   **Usuários e Assets**
+    *   `POST /api/users`: Sincroniza perfil de usuário.
+    *   `POST /api/characters`: Gerencia personagens consistentes.
 
-## 🛡️ Database Management
+## 🛡️ Gerenciamento de Banco de Dados
 
-*   **Migration**: `npx prisma migrate dev --name <migration_name>`
+*   **Migração**: `npx prisma migrate dev --name <nome_da_migracao>`
 *   **Studio (GUI)**: `npx prisma studio`
-*   **Generate Client**: `npx prisma generate` (Run after schema changes)
+*   **Gerar Client**: `npx prisma generate` (Execute após alterações no schema)
 
-## 🔄 Workflow Architecture
+## 🔄 Arquitetura de Workflow
 
-The backend uses a **stateless dispatcher** pattern.
-1.  Frontend sends a command (`/api/workflow/command`).
-2.  Backend updates DB status to `queued` or `pending`.
-3.  Dispatcher finds the next available task and triggers a background worker (`/api/workflow/process`).
-4.  Worker executes the AI task and updates the DB.
-5.  Updates are broadcasted to the frontend via SSE.
+O backend usa um padrão de **dispatcher sem estado (stateless)**.
+1.  O Frontend envia um comando (`/api/workflow/command`).
+2.  O Backend atualiza o status no DB para `queued` (na fila) ou `pending` (pendente).
+3.  O Dispatcher encontra a próxima tarefa disponível e aciona um worker em segundo plano (`/api/workflow/process`).
+4.  O Worker executa a tarefa de IA e atualiza o DB.
+5.  As atualizações são transmitidas para o frontend via SSE.
 
 ---
 
-Developed for ShortsAI Studio.
+Desenvolvido para ShortsAI Studio.
