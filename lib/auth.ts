@@ -46,4 +46,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             return baseUrl
         },
     },
+    pages: {
+        signIn: "/api/auth/redirect",
+        error: "/api/auth/redirect",
+        signOut: "/api/auth/redirect",
+    },
 })
