@@ -12,9 +12,9 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
-        const audioUrl = await AIService.generateAudio(userId, text, voice, provider || 'gemini', apiKeys);
+        const result = await AIService.generateAudio(userId, text, voice, provider || 'gemini', apiKeys);
 
-        return NextResponse.json({ audioUrl });
+        return NextResponse.json({ audioUrl: result.url });
     } catch (error: any) {
         console.error('Audio generation failed:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });

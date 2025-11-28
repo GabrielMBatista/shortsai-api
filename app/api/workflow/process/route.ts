@@ -23,6 +23,7 @@ export async function POST(request: Request) {
         }
 
         let outputUrl: string | undefined;
+        let timings: any[] | undefined;
 
         try {
             switch (task.action) {
@@ -38,13 +39,15 @@ export async function POST(request: Request) {
                     break;
                 case 'generate_audio':
                     if ('text' in task.params) {
-                        outputUrl = await AIService.generateAudio(
+                        const result = await AIService.generateAudio(
                             project.user_id,
                             task.params.text,
                             task.params.voice,
                             task.params.provider,
                             task.apiKeys
                         );
+                        outputUrl = result.url;
+                        timings = result.timings;
                     }
                     break;
                 case 'generate_music':
@@ -68,7 +71,8 @@ export async function POST(request: Request) {
                 'completed',
                 outputUrl,
                 undefined,
-                task.apiKeys
+                task.apiKeys,
+                timings
             );
 
             return NextResponse.json({ success: true, url: outputUrl });
