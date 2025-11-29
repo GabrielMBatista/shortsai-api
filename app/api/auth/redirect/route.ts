@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
     const code = url.searchParams.get("code");
 
     // Default to frontend home
-    let target = "http://localhost:3000";
+    let target = process.env.FRONTEND_URL || "http://localhost:3000";
 
     if (error) {
         target += `?error=${encodeURIComponent(error)}`;
