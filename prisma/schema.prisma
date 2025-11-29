@@ -225,6 +225,10 @@ model UserLimits {
   daily_requests_limit     Int      @default(100)
   current_daily_requests   Int      @default(0)
   last_daily_reset         DateTime @default(now())
+  
+  // Daily Video Limits
+  daily_videos_limit       Int      @default(1)
+  current_daily_videos     Int      @default(0)
 
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 

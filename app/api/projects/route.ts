@@ -39,6 +39,57 @@ export async function POST(request: Request) {
 
         const user_id = session.user.id;
 
+        // --- LIMIT CHECK ---
+        const user = await prisma.user.findUnique({
+            where: { id: user_id },
+            include: { user_limits: true }
+        });
+
+        if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+        let limits = user.user_limits;
+        if (!limits) {
+            limits = await prisma.userLimits.create({ data: { user_id } });
+        }
+
+        const today = new Date();
+        const lastReset = new Date(limits.last_daily_reset);
+        const isNewDay = today.getDate() !== lastReset.getDate() || today.getMonth() !== lastReset.getMonth();
+
+        if (isNewDay) {
+            // Reset daily counters
+            limits = await prisma.userLimits.update({
+                where: { user_id },
+                data: {
+                    current_daily_requests: 0,
+                    current_daily_videos: 0,
+                    last_daily_reset: today
+                }
+            });
+        }
+
+        // Check Limit for FREE users
+        const isFree = user.subscription_plan === 'FREE' || user.tier === 'free';
+        if (isFree) {
+            const limit = limits.daily_videos_limit; // Default is 1 in schema
+            if (limits.current_daily_videos >= limit) {
+                return NextResponse.json({
+                    error: 'Daily video limit reached',
+                    details: 'Free accounts are limited to 1 video per day. Upgrade to Pro for more.'
+                }, { status: 403 });
+            }
+        }
+
+        // Increment Video Count
+        await prisma.userLimits.update({
+            where: { user_id },
+            data: {
+                current_daily_videos: { increment: 1 },
+                current_videos_used: { increment: 1 }
+            }
+        });
+        // -------------------
+
         // If characterIds provided, fetch character data and create snapshot
         let reference_characters_snapshot: Prisma.InputJsonValue | undefined;
         if (characterIds && Array.isArray(characterIds) && characterIds.length > 0) {

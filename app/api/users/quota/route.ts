@@ -43,11 +43,13 @@ export async function GET(request: Request) {
                 maxVideos: userLimits.monthly_videos_limit,
                 maxTTSMinutes: userLimits.monthly_minutes_tts,
                 maxImages: userLimits.monthly_images_limit,
+                maxDailyVideos: userLimits.daily_videos_limit,
             },
             used: {
                 currentVideos: userLimits.current_videos_used,
                 currentTTSMinutes: parseFloat(userLimits.current_minutes_tts_used.toString()),
                 currentImages: userLimits.current_images_used,
+                currentDailyVideos: userLimits.current_daily_videos,
             },
             lastResetDate: userLimits.last_reset_date,
         };

@@ -158,7 +158,11 @@ export class AIService {
         if (isNewDay) {
             await prisma.userLimits.update({
                 where: { user_id: userId },
-                data: { current_daily_requests: 1, last_daily_reset: today }
+                data: {
+                    current_daily_requests: 1,
+                    current_daily_videos: 0,
+                    last_daily_reset: today
+                }
             });
         } else {
             if (limits.current_daily_requests >= limits.daily_requests_limit) {
