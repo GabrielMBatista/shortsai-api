@@ -7,9 +7,9 @@ const createPrismaClient = () => {
 
     // Skip adapter during build to prevent connection hangs
     if (process.env.NEXT_BUILD) {
-        return new PrismaClient({
-            log: ['error', 'warn'],
-        });
+        // When building, we just need a valid client instance to satisfy type checks.
+        // We don't want to connect to the DB.
+        return new PrismaClient();
     }
 
     // Usar driver adapter do PostgreSQL
