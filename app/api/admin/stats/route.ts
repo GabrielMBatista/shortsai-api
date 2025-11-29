@@ -17,7 +17,7 @@ export async function GET(req: Request) {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
-        const [totalUsers, totalProjects, totalScenes, recentUsers, recentProjectsList] = await Promise.all([
+        const [totalUsers, totalProjects, totalScenes, recentUsers, recentProjectsList, usageLogs] = await Promise.all([
             prisma.user.count(),
             prisma.project.count(),
             prisma.scene.count(),
@@ -28,6 +28,13 @@ export async function GET(req: Request) {
             prisma.project.findMany({
                 where: { created_at: { gte: startDate } },
                 select: { created_at: true }
+            }),
+            prisma.usageLog.groupBy({
+                by: ['action_type', 'status'],
+                where: { created_at: { gte: startDate } },
+                _count: {
+                    _all: true
+                }
             })
         ]);
 
@@ -61,12 +68,25 @@ export async function GET(req: Request) {
             include: { user: { select: { name: true, email: true } } }
         });
 
+        // Process Usage Stats
+        const usageStats = usageLogs.reduce((acc, log) => {
+            const action = log.action_type;
+            if (!acc[action]) {
+                acc[action] = { success: 0, failed: 0, total: 0 };
+            }
+            if (log.status === 'success') acc[action].success += log._count._all;
+            if (log.status === 'failed') acc[action].failed += log._count._all;
+            acc[action].total += log._count._all;
+            return acc;
+        }, {} as Record<string, { success: number, failed: number, total: number }>);
+
         return NextResponse.json({
             totalUsers,
             totalProjects,
             totalScenes,
             recentProjects,
-            analytics
+            analytics,
+            usageStats
         });
     } catch (error) {
         console.error("Admin Stats GET Error:", error);

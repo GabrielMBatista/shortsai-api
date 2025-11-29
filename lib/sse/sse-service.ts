@@ -30,6 +30,8 @@ export function removeConnection(projectId: string, controller: ReadableStreamDe
     }
 }
 
+export const ADMIN_CHANNEL = 'admin_global_channel';
+
 export function broadcastProjectUpdate(projectId: string, data: any) {
     const controllers = connections.get(projectId);
     if (!controllers || controllers.size === 0) {
@@ -48,6 +50,26 @@ export function broadcastProjectUpdate(projectId: string, data: any) {
             controller.enqueue(encoded);
         } catch (err) {
             console.error('[SSE] Failed to send to client:', err);
+            controllers.delete(controller);
+        }
+    });
+}
+
+export function broadcastAdminUpdate(eventType: string, payload: any) {
+    const controllers = connections.get(ADMIN_CHANNEL);
+    if (!controllers || controllers.size === 0) {
+        return;
+    }
+
+    const data = { type: eventType, payload };
+    const message = `data: ${JSON.stringify(data)}\n\n`;
+    const encoder = new TextEncoder();
+    const encoded = encoder.encode(message);
+
+    controllers.forEach(controller => {
+        try {
+            controller.enqueue(encoded);
+        } catch (err) {
             controllers.delete(controller);
         }
     });

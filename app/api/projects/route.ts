@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { broadcastAdminUpdate } from '@/lib/sse/sse-service';
 import { NextResponse } from 'next/server';
 import { Prisma, Character } from '@prisma/client';
 import { auth } from '@/lib/auth';
@@ -131,6 +132,9 @@ export async function POST(request: Request) {
             },
             include: { characters: true },
         });
+
+        // Broadcast to admin dashboard
+        broadcastAdminUpdate('PROJECT_CREATED', project);
 
         return NextResponse.json(project);
     } catch (error: any) {

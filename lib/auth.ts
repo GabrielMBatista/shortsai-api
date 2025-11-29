@@ -21,6 +21,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     ],
     secret: process.env.AUTH_SECRET,
     debug: true, // Force debug
+    events: {
+        createUser: async ({ user }) => {
+            const { broadcastAdminUpdate } = await import("@/lib/sse/sse-service");
+            broadcastAdminUpdate('USER_REGISTERED', user);
+        }
+    },
     callbacks: {
         async session({ session, user }) {
             console.log("Auth Debug - Env Vars:", {
