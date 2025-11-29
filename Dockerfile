@@ -18,6 +18,7 @@ COPY . .
 RUN npx prisma generate
 
 # Build the Next.js application
+ENV NEXT_BUILD=true
 RUN npm run build
 
 # Production image, copy all the files and run next

@@ -5,6 +5,13 @@ import { Pool } from "pg";
 const createPrismaClient = () => {
     const databaseUrl = process.env.DATABASE_URL || "";
 
+    // Skip adapter during build to prevent connection hangs
+    if (process.env.NEXT_BUILD) {
+        return new PrismaClient({
+            log: ['error', 'warn'],
+        });
+    }
+
     // Usar driver adapter do PostgreSQL
     const pool = new Pool({ connectionString: databaseUrl });
     const adapter = new PrismaPg(pool);
