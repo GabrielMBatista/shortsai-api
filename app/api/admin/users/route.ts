@@ -8,7 +8,7 @@ export async function GET(req: Request) {
         if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const currentUser = await prisma.user.findUnique({ where: { email: session.user.email } });
-        if (currentUser?.role !== 'ADMIN') return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        if ((currentUser as any)?.role !== 'ADMIN') return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
         const users = await prisma.user.findMany({
             orderBy: { created_at: 'desc' },
@@ -33,7 +33,7 @@ export async function PATCH(req: Request) {
         if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const currentUser = await prisma.user.findUnique({ where: { email: session.user.email } });
-        if (currentUser?.role !== 'ADMIN') return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        if ((currentUser as any)?.role !== 'ADMIN') return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
         const body = await req.json();
         const { userId, role, subscription_plan, is_blocked } = body;
