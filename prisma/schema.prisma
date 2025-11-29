@@ -66,6 +66,11 @@ enum UsageLogStatus {
   failed
 }
 
+enum Role {
+  USER
+  ADMIN
+}
+
 model User {
   id                 String           @id @default(uuid())
   name               String?
@@ -74,8 +79,10 @@ model User {
   image              String?
   avatar_url         String?
   google_id          String?          @unique
+  role               Role             @default(USER)
   subscription_plan  SubscriptionPlan @default(FREE)
   tier               Tier             @default(free)
+  is_blocked         Boolean          @default(false)
   stripe_customer_id String?
   created_at         DateTime         @default(now())
   updated_at         DateTime         @default(now()) @updatedAt

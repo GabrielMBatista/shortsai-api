@@ -5,14 +5,20 @@ async function main() {
 
     // Criar usuário admin
     const adminUser = await prisma.user.upsert({
-        where: { email: "admin@shortsai.com" },
-        update: {},
+        where: { email: "elaofhell2@gmail.com" },
+        update: {
+            role: "ADMIN",
+            subscription_plan: "PRO",
+            tier: "pro"
+        },
         create: {
-            email: "admin@shortsai.com",
+            email: "elaofhell2@gmail.com",
             name: "Admin ShortsAI",
             avatar_url: "https://api.dicebear.com/7.x/avataaars/svg?seed=admin",
             google_id: "admin-google-id",
+            role: "ADMIN",
             subscription_plan: "PRO",
+            tier: "pro"
         },
     });
 
@@ -20,6 +26,7 @@ async function main() {
         id: adminUser.id,
         email: adminUser.email,
         name: adminUser.name,
+        role: adminUser.role
     });
 
     // Criar API keys para o admin (opcional)
