@@ -1,14 +1,30 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { Prisma, Character } from '@prisma/client';
+import { auth } from '@/lib/auth';
+import { createProjectSchema } from '@/lib/schemas';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
     try {
+        const session = await auth();
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         const body = await request.json();
+
+        // Validate input using Zod
+        const validation = createProjectSchema.safeParse(body);
+        if (!validation.success) {
+            return NextResponse.json({
+                error: 'Validation Error',
+                details: validation.error.format()
+            }, { status: 400 });
+        }
+
         const {
-            user_id,
             topic,
             style,
             language,
@@ -19,11 +35,9 @@ export async function POST(request: Request) {
             include_music,
             bg_music_prompt,
             duration_config,
-        } = body;
+        } = validation.data;
 
-        if (!user_id || !topic || !style || !voice_name || !tts_provider) {
-            return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-        }
+        const user_id = session.user.id;
 
         // If characterIds provided, fetch character data and create snapshot
         let reference_characters_snapshot: Prisma.InputJsonValue | undefined;
@@ -49,13 +63,13 @@ export async function POST(request: Request) {
                 user_id,
                 topic,
                 style,
-                language: language || 'en',
+                language,
                 voice_name,
                 tts_provider,
                 reference_image_url,
                 // We still support snapshot for legacy/backup, but primary link is relation
                 ...(reference_characters_snapshot && { reference_characters_snapshot }),
-                include_music: include_music || false,
+                include_music,
                 bg_music_prompt,
                 bg_music_status: include_music ? 'pending' : null,
                 duration_config: duration_config || Prisma.JsonNull,
@@ -70,18 +84,18 @@ export async function POST(request: Request) {
         return NextResponse.json(project);
     } catch (error: any) {
         console.error('Error creating project:', error);
-        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }
 
 export async function GET(request: Request) {
     try {
-        const { searchParams } = new URL(request.url);
-        const user_id = searchParams.get('user_id');
-
-        if (!user_id) {
-            return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+        const session = await auth();
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
+
+        const user_id = session.user.id;
 
         const projects = await prisma.project.findMany({
             where: { user_id },
@@ -114,6 +128,6 @@ export async function GET(request: Request) {
         return NextResponse.json(projects);
     } catch (error: any) {
         console.error('Error fetching projects:', error);
-        return NextResponse.json({ error: error.message || 'Internal Server Error', details: error }, { status: 500 });
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }

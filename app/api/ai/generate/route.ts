@@ -1,17 +1,30 @@
 import { NextResponse } from 'next/server';
 import { AIService } from '@/lib/ai/ai-service';
+import { auth } from '@/lib/auth';
+import { aiGenerateSchema } from '@/lib/schemas';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
     try {
-        const body = await request.json();
-        const { action, userId, params, apiKeys } = body;
-
-        if (!userId || !action) {
-            return NextResponse.json({ error: 'Missing userId or action' }, { status: 400 });
+        const session = await auth();
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
+
+        const body = await request.json();
+
+        const validation = aiGenerateSchema.safeParse(body);
+        if (!validation.success) {
+            return NextResponse.json({
+                error: 'Validation Error',
+                details: validation.error.format()
+            }, { status: 400 });
+        }
+
+        const { action, params, apiKeys } = validation.data;
+        const userId = session.user.id;
 
         let result;
 
@@ -48,14 +61,12 @@ export async function POST(request: Request) {
                     apiKeys
                 );
                 break;
-            default:
-                return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
         }
 
         return NextResponse.json({ result });
 
     } catch (error: any) {
         console.error('[AI API] Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }
