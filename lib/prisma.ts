@@ -7,9 +7,20 @@ const createPrismaClient = () => {
 
     // Skip adapter during build to prevent connection hangs
     if (process.env.NEXT_BUILD) {
-        // When building, we just need a valid client instance to satisfy type checks.
-        // We don't want to connect to the DB.
-        return new PrismaClient();
+        // When building with driverAdapters, we must provide an adapter or accelerateUrl.
+        // We create a dummy pool and adapter to satisfy the constructor.
+        const mockPool = new Pool({ connectionString: "postgres://dummy:dummy@localhost:5432/dummy" });
+        // We override the connect method to do nothing
+        mockPool.connect = async () => ({
+            query: async () => ({ rows: [] }),
+            release: () => { },
+        } as any);
+
+        const adapter = new PrismaPg(mockPool);
+        return new PrismaClient({
+            adapter,
+            log: ['error', 'warn'],
+        });
     }
 
     // Usar driver adapter do PostgreSQL
