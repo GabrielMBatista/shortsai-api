@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # Database Service (PostgreSQL) - Optional (Profile: local)
   # To use local DB: docker-compose --profile local up
