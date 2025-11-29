@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { userId, topic, style, language, durationConfig, apiKeys } = body;
+        const { userId, topic, style, language, durationConfig, apiKeys, characterDescription } = body;
 
         if (!userId || !topic || !style) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -18,7 +18,8 @@ export async function POST(request: Request) {
             style,
             language || 'English',
             durationConfig || { min: 65, max: 90 },
-            apiKeys
+            apiKeys,
+            characterDescription
         );
 
         return NextResponse.json(script);

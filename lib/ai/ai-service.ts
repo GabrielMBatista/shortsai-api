@@ -421,7 +421,8 @@ export class AIService {
         style: string,
         language: string,
         durationConfig: { min: number, max: number, targetScenes?: number },
-        keys?: { gemini?: string }
+        keys?: { gemini?: string },
+        characterDescription?: string
     ): Promise<any> {
         const ai = await this.getGeminiClient(userId, keys?.gemini);
 
@@ -430,7 +431,11 @@ export class AIService {
         const maxSeconds = durationConfig?.max || 90;
         const sceneInstruction = durationConfig?.targetScenes
             ? `Strictly generate exactly ${durationConfig.targetScenes} scenes.`
-            : `Generate between ${Math.max(3, Math.floor(minSeconds / 10))} to ${Math.min(15, Math.ceil(maxSeconds / 5))} scenes based on pacing.`;
+            : `Generate between ${Math.max(3, Math.floor(minSeconds / 15))} to ${Math.min(12, Math.ceil(maxSeconds / 7))} scenes based on pacing.`;
+
+        const characterPrompt = characterDescription
+            ? `MANDATORY CHARACTER: Use this EXACT description for the main character: "${characterDescription}". Do NOT change their appearance.`
+            : `CREATE A CHARACTER: Design a visually distinct main character suitable for the topic.`;
 
         const prompt = `
         You are an expert viral video director for Shorts/Reels.
@@ -446,6 +451,8 @@ export class AIService {
         - If the user's input/prompt is short, you MUST EXPAND the narrative.
         - If the user's input/prompt is too long, you MUST SUMMARIZE.
         - Keep the narration natural and engaging.
+        - **CHARACTER CONSISTENCY**: ${characterPrompt}
+        - **VISUAL REPETITION**: In EVERY scene where the main character appears, you MUST include the "character_anchor_used" description in the 'visualDescription'.
 
         VIRAL METADATA STRATEGY (Language: ${language}):
         - "videoTitle": MAX 50 chars. High CTR. Curiosity gap. 1 Emoji. NO hashtags.
@@ -457,8 +464,11 @@ export class AIService {
         {
             "videoTitle": "Viral Title 🤯",
             "videoDescription": "You won't believe this...\\n#shorts #viral",
+            "meta": {
+                "character_anchor_used": "Full detailed visual description of the character"
+            },
             "scenes": [
-            { "sceneNumber": 1, "visualDescription": "Detailed visual prompt for AI image generator", "narration": "Voiceover text", "durationSeconds": 5 }
+            { "sceneNumber": 1, "visualDescription": "[Character Description] walking in a...", "narration": "Voiceover text", "durationSeconds": 5 }
             ]
         }
         `;
@@ -493,6 +503,7 @@ export class AIService {
                 return {
                     videoTitle: json.videoTitle || json.title || topic,
                     videoDescription: json.videoDescription || json.description || `Video about ${topic}`,
+                    meta: json.meta || { character_anchor_used: characterDescription || "Unknown" },
                     scenes: normalizedScenes
                 };
             } catch (e) {
