@@ -44,6 +44,8 @@ services:
     build:
       context: ../shortai-studio
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
     container_name: shortsai-studio
     ports:
       - "3000:80"
