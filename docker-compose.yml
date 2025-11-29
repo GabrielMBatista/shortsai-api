@@ -33,7 +33,7 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:-supersecret}
       AUTH_URL: ${AUTH_URL:-http://localhost:3333/api/auth}
     ports:
-      - "8080:3333"
+      - "3333:3333"
     restart: always
     networks:
       - shortsai-network
