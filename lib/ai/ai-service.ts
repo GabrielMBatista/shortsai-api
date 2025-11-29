@@ -123,22 +123,103 @@ const blobToBase64 = async (blob: Blob): Promise<string> => {
 
 export class AIService {
 
-    private static async getGeminiClient(userId: string, providedKey?: string) {
-        if (providedKey) return new GoogleGenAI({ apiKey: providedKey });
+    // --- RATE LIMITING ---
+    private static rpmCache = new Map<string, { count: number, resetAt: number }>();
+    private static readonly RPM_LIMIT = 5; // 5 requests per minute per user
 
-        const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
-        const apiKey = keys?.gemini_key || process.env.GEMINI_API_KEY;
-        if (!apiKey) throw new Error("Gemini API Key missing");
-        return new GoogleGenAI({ apiKey });
+    private static async checkRateLimits(userId: string) {
+        // 1. Check RPM (In-Memory)
+        const now = Date.now();
+        const userRpm = this.rpmCache.get(userId);
+
+        if (userRpm && now < userRpm.resetAt) {
+            if (userRpm.count >= this.RPM_LIMIT) {
+                throw new Error("Rate limit exceeded (RPM). Please wait a moment.");
+            }
+            userRpm.count++;
+        } else {
+            this.rpmCache.set(userId, { count: 1, resetAt: now + 60000 });
+        }
+
+        // 2. Check RPD (Database)
+        const limits = await prisma.userLimits.findUnique({ where: { user_id: userId } });
+
+        // If no limits record exists, assume default (create one if needed, or just pass)
+        // For now, let's assume if no record, we create one with defaults
+        if (!limits) {
+            await prisma.userLimits.create({ data: { user_id: userId } });
+            return;
+        }
+
+        const today = new Date();
+        const lastReset = new Date(limits.last_daily_reset);
+        const isNewDay = today.getDate() !== lastReset.getDate() || today.getMonth() !== lastReset.getMonth();
+
+        if (isNewDay) {
+            await prisma.userLimits.update({
+                where: { user_id: userId },
+                data: { current_daily_requests: 1, last_daily_reset: today }
+            });
+        } else {
+            if (limits.current_daily_requests >= limits.daily_requests_limit) {
+                throw new Error(`Daily limit exceeded (${limits.daily_requests_limit} requests/day). Upgrade your plan.`);
+            }
+            await prisma.userLimits.update({
+                where: { user_id: userId },
+                data: { current_daily_requests: { increment: 1 } }
+            });
+        }
     }
 
-    private static async getElevenLabsKey(userId: string, providedKey?: string) {
-        if (providedKey) return providedKey;
+    private static async executeRequest<T>(isSystem: boolean, task: () => Promise<T>, userId?: string): Promise<T> {
+        if (isSystem) {
+            if (userId) await this.checkRateLimits(userId);
+            return generationQueue.add(() => retryWithBackoff(task));
+        } else {
+            return retryWithBackoff(task);
+        }
+    }
+
+    private static async getGeminiClient(userId: string, providedKey?: string): Promise<{ client: GoogleGenAI, isSystem: boolean }> {
+        if (providedKey) return { client: new GoogleGenAI({ apiKey: providedKey }), isSystem: false };
 
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
-        const apiKey = keys?.elevenlabs_key || process.env.ELEVENLABS_API_KEY;
-        if (!apiKey) throw new Error("ElevenLabs API Key missing");
-        return apiKey;
+        const userKey = keys?.gemini_key;
+
+        if (userKey) return { client: new GoogleGenAI({ apiKey: userKey }), isSystem: false };
+
+        const systemKey = process.env.GEMINI_API_KEY;
+        if (!systemKey) throw new Error("Gemini API Key missing");
+
+        return { client: new GoogleGenAI({ apiKey: systemKey }), isSystem: true };
+    }
+
+    private static async getElevenLabsKey(userId: string, providedKey?: string): Promise<{ key: string, isSystem: boolean }> {
+        if (providedKey) return { key: providedKey, isSystem: false };
+
+        const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
+        const userKey = keys?.elevenlabs_key;
+
+        if (userKey) return { key: userKey, isSystem: false };
+
+        const systemKey = process.env.ELEVENLABS_API_KEY;
+        if (!systemKey) throw new Error("ElevenLabs API Key missing");
+
+        return { key: systemKey, isSystem: true };
+    }
+
+    private static async getGroqKey(userId: string, providedKey?: string): Promise<{ key: string, isSystem: boolean }> {
+        if (providedKey) return { key: providedKey, isSystem: false };
+
+        const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
+        const userKey = keys?.groq_key;
+
+        if (userKey) return { key: userKey, isSystem: false };
+
+        const systemKey = process.env.GROQ_API_KEY;
+        if (!systemKey) throw new Error("Groq API Key missing");
+
+        return { key: systemKey, isSystem: true };
     }
 
     private static async trackUsage(userId: string, provider: string, model: string, type: 'image' | 'audio' | 'text') {
@@ -148,11 +229,11 @@ export class AIService {
     }
 
     static async generateImage(userId: string, prompt: string, style: string, keys?: { gemini?: string }): Promise<string> {
-        const ai = await this.getGeminiClient(userId, keys?.gemini);
+        const { client: ai, isSystem } = await this.getGeminiClient(userId, keys?.gemini);
 
         const fullPrompt = `Create a vertical (9:16) image in the style of ${style}. Scene: ${prompt}.`;
 
-        return generationQueue.add(() => retryWithBackoff(async () => {
+        return this.executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash-image',
                 contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
@@ -182,16 +263,7 @@ export class AIService {
                 }
             }
             throw new Error("Image generation failed - No image returned");
-        }));
-    }
-
-    private static async getGroqKey(userId: string, providedKey?: string) {
-        if (providedKey) return providedKey;
-
-        const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
-        const apiKey = keys?.groq_key || process.env.GROQ_API_KEY;
-        if (!apiKey) throw new Error("Groq API Key missing");
-        return apiKey;
+        }, userId);
     }
 
     static async generateAudio(userId: string, text: string, voice: string, provider: string, keys?: { gemini?: string, elevenlabs?: string, groq?: string }): Promise<{ url: string, timings?: any[], duration?: number }> {
@@ -205,10 +277,10 @@ export class AIService {
     }
 
     private static async generateGroqAudio(userId: string, text: string, voiceName: string, providedKey?: string): Promise<{ url: string, timings?: any[], duration?: number }> {
-        const apiKey = await this.getGroqKey(userId, providedKey);
+        const { key: apiKey, isSystem } = await this.getGroqKey(userId, providedKey);
         const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/speech";
 
-        return generationQueue.add(() => retryWithBackoff(async () => {
+        return this.executeRequest(isSystem, async () => {
             const response = await fetch(GROQ_API_URL, {
                 method: 'POST',
                 headers: {
@@ -219,7 +291,7 @@ export class AIService {
                     model: "playai-tts",
                     input: text,
                     voice: voiceName,
-                    response_format: "wav" // Request WAV directly
+                    response_format: "wav"
                 })
             });
 
@@ -235,46 +307,32 @@ export class AIService {
             const base64Audio = buffer.toString('base64');
             const url = `data:audio/wav;base64,${base64Audio}`;
 
-            // Calculate duration from WAV header or file size
-            // WAV header (44 bytes) + PCM data
-            // Assuming 24kHz (or 48kHz?), 16-bit, Mono/Stereo?
-            // Groq PlayAI usually outputs 48kHz or 24kHz.
-            // Let's inspect the header if possible, or estimate.
-            // Standard PlayAI is often 24kHz or 44.1kHz.
-            // Let's assume 24kHz mono 16-bit for now as a fallback, but better to read the header.
-
-            let duration = 5; // Fallback
+            let duration = 5;
             if (buffer.length > 44) {
-                // Read sample rate and byte rate from WAV header
-                const sampleRate = buffer.readUInt32LE(24);
                 const byteRate = buffer.readUInt32LE(28);
                 const dataSize = buffer.readUInt32LE(40);
 
                 if (byteRate > 0 && dataSize > 0) {
                     duration = dataSize / byteRate;
                 } else {
-                    // Fallback estimation if header is weird
-                    duration = buffer.length / 48000; // Rough guess
+                    duration = buffer.length / 48000;
                 }
             }
 
             return { url, duration };
-        }));
+        }, userId);
     }
 
     private static async generateElevenLabsAudio(userId: string, text: string, voiceId: string, providedKey?: string): Promise<{ url: string, timings?: any[] }> {
-        const apiKey = await this.getElevenLabsKey(userId, providedKey);
+        const { key: apiKey, isSystem } = await this.getElevenLabsKey(userId, providedKey);
         const ELEVEN_LABS_API_URL = "https://api.elevenlabs.io/v1";
-
-        // Default to multilingual v2 for better language support
         const modelId = "eleven_multilingual_v2";
 
-        return generationQueue.add(() => retryWithBackoff(async () => {
-            // Use the with-timestamps endpoint
+        return this.executeRequest(isSystem, async () => {
             const response = await fetch(`${ELEVEN_LABS_API_URL}/text-to-speech/${voiceId}/with-timestamps`, {
                 method: 'POST',
                 headers: {
-                    'Accept': 'application/json', // Expect JSON with base64 audio
+                    'Accept': 'application/json',
                     'Content-Type': 'application/json',
                     'xi-api-key': apiKey
                 },
@@ -296,7 +354,6 @@ export class AIService {
             const base64Audio = data.audio_base64;
             const alignment = data.alignment;
 
-            // Process Alignment (Character to Word)
             let timings: any[] = [];
             if (alignment && alignment.characters && alignment.character_start_times_seconds) {
                 const chars = alignment.characters;
@@ -326,62 +383,21 @@ export class AIService {
                 }
             }
 
-            // ElevenLabs returns MP3 in base64
             const url = `data:audio/mpeg;base64,${base64Audio}`;
 
-            // Calculate duration from alignment (last end time)
             let duration = 0;
             if (alignment && alignment.character_end_times_seconds && alignment.character_end_times_seconds.length > 0) {
                 duration = alignment.character_end_times_seconds[alignment.character_end_times_seconds.length - 1];
             }
 
             return { url, timings, duration };
-        }));
-    }
-
-    // Helper: Create proper WAV file from raw PCM data
-    private static createWavFromPcm(base64Pcm: string): string {
-        // Decode base64 to binary
-        const binaryString = Buffer.from(base64Pcm, 'base64').toString('binary');
-        const pcmBytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            pcmBytes[i] = binaryString.charCodeAt(i);
-        }
-
-        const len = pcmBytes.length;
-
-        // Create WAV header (44 bytes)
-        const wavHeader = Buffer.alloc(44);
-
-        // "RIFF" chunk descriptor
-        wavHeader.write('RIFF', 0);
-        wavHeader.writeUInt32LE(36 + len, 4); // File size - 8
-        wavHeader.write('WAVE', 8);
-
-        // "fmt " sub-chunk
-        wavHeader.write('fmt ', 12);
-        wavHeader.writeUInt32LE(16, 16); // Subchunk1Size (16 for PCM)
-        wavHeader.writeUInt16LE(1, 20); // AudioFormat (1 = PCM)
-        wavHeader.writeUInt16LE(1, 22); // NumChannels (1 = Mono)
-        wavHeader.writeUInt32LE(24000, 24); // SampleRate (24kHz)
-        wavHeader.writeUInt32LE(24000 * 2, 28); // ByteRate (SampleRate * NumChannels * BitsPerSample/8)
-        wavHeader.writeUInt16LE(2, 32); // BlockAlign (NumChannels * BitsPerSample/8)
-        wavHeader.writeUInt16LE(16, 34); // BitsPerSample (16-bit)
-
-        // "data" sub-chunk
-        wavHeader.write('data', 36);
-        wavHeader.writeUInt32LE(len, 40); // Subchunk2Size (PCM data size)
-
-        // Concatenate header and PCM data
-        const wavBytes = Buffer.concat([wavHeader, Buffer.from(pcmBytes)]);
-
-        return `data:audio/wav;base64,${wavBytes.toString('base64')}`;
+        }, userId);
     }
 
     private static async generateGeminiAudio(userId: string, text: string, voiceName: string, providedKey?: string): Promise<{ url: string, timings?: any[], duration?: number }> {
-        const ai = await this.getGeminiClient(userId, providedKey);
+        const { client: ai, isSystem } = await this.getGeminiClient(userId, providedKey);
 
-        return generationQueue.add(() => retryWithBackoff(async () => {
+        return this.executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash-preview-tts",
                 contents: [{ role: 'user', parts: [{ text: text }] }],
@@ -396,14 +412,8 @@ export class AIService {
             const candidate = response.candidates?.[0];
             if (candidate?.content?.parts?.[0]?.inlineData?.data) {
                 const rawPcmBase64 = candidate.content.parts[0].inlineData.data;
+                const wavDataUri = createWavDataUri(rawPcmBase64);
 
-                // Gemini TTS returns raw PCM data - we need to wrap it in a WAV file structure
-                const wavDataUri = this.createWavFromPcm(rawPcmBase64);
-
-                // Calculate duration: 24kHz sample rate, 16-bit (2 bytes) per sample, Mono
-                // Length in bytes / 2 bytes per sample / 24000 samples per second
-                const pcmLength = rawPcmBase64.length * 0.75; // Base64 approximate length (or decode it)
-                // Better to decode to get exact byte length
                 const binaryString = Buffer.from(rawPcmBase64, 'base64').toString('binary');
                 const duration = binaryString.length / 2 / 24000;
 
@@ -412,7 +422,7 @@ export class AIService {
                 return { url: wavDataUri, duration };
             }
             throw new Error("Audio generation failed - no inline data");
-        }));
+        }, userId);
     }
 
     static async generateScript(
@@ -423,9 +433,8 @@ export class AIService {
         durationConfig: { min: number, max: number, targetScenes?: number },
         keys?: { gemini?: string }
     ): Promise<any> {
-        const ai = await this.getGeminiClient(userId, keys?.gemini);
+        const { client: ai, isSystem } = await this.getGeminiClient(userId, keys?.gemini);
 
-        // Safe defaults - Defaulting to 60s+ for monetization if not specified
         const minSeconds = durationConfig?.min || 65;
         const maxSeconds = durationConfig?.max || 90;
         const sceneInstruction = durationConfig?.targetScenes
@@ -463,7 +472,7 @@ export class AIService {
         }
         `;
 
-        return generationQueue.add(() => retryWithBackoff(async () => {
+        return this.executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash",
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -478,11 +487,9 @@ export class AIService {
             if (!text) throw new Error("No script generated");
 
             try {
-                // Clean markdown if present
                 const cleanText = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
                 const json = JSON.parse(cleanText);
 
-                // Normalize keys to camelCase (Standardization)
                 const normalizedScenes = (json.scenes || []).map((s: any, i: number) => ({
                     sceneNumber: s.sceneNumber || s.scene_number || (i + 1),
                     visualDescription: s.visualDescription || s.visual_description || "Pending description",
@@ -499,14 +506,14 @@ export class AIService {
                 console.error("JSON Parse Error", text);
                 throw new Error("Failed to parse script format.");
             }
-        }));
+        }, userId);
     }
 
     static async generateMusicPrompt(userId: string, topic: string, style: string, keys?: { gemini?: string }): Promise<string> {
-        const ai = await this.getGeminiClient(userId, keys?.gemini);
+        const { client: ai, isSystem } = await this.getGeminiClient(userId, keys?.gemini);
         const prompt = `Create a text-to-audio prompt for Suno AI. Topic: "${topic}". Style: "${style}". Output: Max 25 words, include "instrumental, no vocals".`;
 
-        return generationQueue.add(() => retryWithBackoff(async () => {
+        return this.executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash",
                 contents: [{ role: 'user', parts: [{ text: prompt }] }]
@@ -514,15 +521,15 @@ export class AIService {
 
             await this.trackUsage(userId, 'gemini', 'gemini-2.5-flash', 'text');
             return response.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "cinematic instrumental background music";
-        }));
+        }, userId);
     }
 
     static async analyzeCharacterFeatures(userId: string, base64Image: string, keys?: { gemini?: string }): Promise<string> {
-        const ai = await this.getGeminiClient(userId, keys?.gemini);
+        const { client: ai, isSystem } = await this.getGeminiClient(userId, keys?.gemini);
         const base64Data = base64Image.split(',')[1];
         const prompt = `Analyze this character portrait. Describe the FACE in extreme detail for a stable diffusion prompt. Focus on: Skin tone, Eye color/shape, Hair style/color, Facial structure. Ignore clothing/background. Output a comma-separated list of visual adjectives.`;
 
-        return generationQueue.add(() => retryWithBackoff(async () => {
+        return this.executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash",
                 contents: [
@@ -538,15 +545,15 @@ export class AIService {
 
             await this.trackUsage(userId, 'gemini', 'gemini-2.5-flash-vision', 'text');
             return response.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "Detailed character face description";
-        }));
+        }, userId);
     }
 
     static async optimizeReferenceImage(userId: string, base64ImageUrl: string, keys?: { gemini?: string }): Promise<string> {
-        const ai = await this.getGeminiClient(userId, keys?.gemini);
+        const { client: ai, isSystem } = await this.getGeminiClient(userId, keys?.gemini);
         const base64Data = base64ImageUrl.split(',')[1];
         const prompt = `Generate a NEW image of ONLY the character's FACE and HAIR (Headshot). IGNORE original clothing. Solid WHITE background. 1:1 Aspect Ratio.`;
 
-        return generationQueue.add(() => retryWithBackoff(async () => {
+        return this.executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash-image',
                 contents: [
@@ -580,10 +587,11 @@ export class AIService {
                 }
             }
             throw new Error("Optimization failed - No image returned");
-        }));
+        }, userId);
     }
+
     static async getElevenLabsVoices(userId: string, providedKey?: string): Promise<any[]> {
-        const apiKey = await this.getElevenLabsKey(userId, providedKey);
+        const { key: apiKey } = await this.getElevenLabsKey(userId, providedKey);
         const ELEVEN_LABS_API_URL = "https://api.elevenlabs.io/v1";
 
         try {
@@ -617,11 +625,17 @@ export class AIService {
     }
 
     static async generateMusic(userId: string, stylePrompt: string, keys?: { suno?: string }): Promise<string> {
-        // Fetch Suno Key
         let apiKey = keys?.suno;
+        let isSystem = false;
+
         if (!apiKey) {
             const dbKeys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
-            apiKey = dbKeys?.suno_key || process.env.SUNO_API_KEY;
+            apiKey = dbKeys?.suno_key || undefined;
+        }
+
+        if (!apiKey) {
+            apiKey = process.env.SUNO_API_KEY;
+            isSystem = true;
         }
 
         if (!apiKey) throw new Error("Suno API Key missing.");
@@ -634,30 +648,30 @@ export class AIService {
             style: stylePrompt,
             title: "ShortsAI Soundtrack",
             model: "V3_5",
-            callBackUrl: "https://example.com/callback" // Optional
+            callBackUrl: "https://example.com/callback"
         };
 
-        // Start Generation
-        const response = await fetch(`${SUNO_BASE_URL}/generate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-            body: JSON.stringify(payload)
-        });
+        return this.executeRequest(isSystem, async () => {
+            const response = await fetch(`${SUNO_BASE_URL}/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                body: JSON.stringify(payload)
+            });
 
-        if (!response.ok) throw new Error("Suno Request Failed");
+            if (!response.ok) throw new Error("Suno Request Failed");
 
-        const resJson = await response.json();
-        const taskId = resJson.data?.taskId;
-        if (!taskId) throw new Error("No taskId returned");
+            const resJson = await response.json();
+            const taskId = resJson.data?.taskId;
+            if (!taskId) throw new Error("No taskId returned");
 
-        await this.trackUsage(userId, 'suno', 'V3_5', 'audio'); // Using 'audio' for music
+            await this.trackUsage(userId, 'suno', 'V3_5', 'audio');
 
-        // Poll for completion
-        return await this.pollForMusicCompletion(taskId, apiKey, SUNO_BASE_URL);
+            return await this.pollForMusicCompletion(taskId, apiKey!, SUNO_BASE_URL);
+        }, userId);
     }
 
     private static async pollForMusicCompletion(taskId: string, apiKey: string, baseUrl: string): Promise<string> {
-        const maxRetries = 60; // 5 minutes
+        const maxRetries = 60;
         const interval = 5000;
 
         for (let i = 0; i < maxRetries; i++) {
