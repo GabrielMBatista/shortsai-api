@@ -43,6 +43,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             else if (new URL(url).origin === baseUrl) return url
             // Allows callback URLs to localhost:3000 (Frontend)
             else if (url.startsWith("http://localhost:3000")) return url
+            // Allows callback URLs to production domain (Dynamic)
+            else if (process.env.NEXT_PUBLIC_APP_URL && url.startsWith(process.env.NEXT_PUBLIC_APP_URL)) return url
             return baseUrl
         },
     },

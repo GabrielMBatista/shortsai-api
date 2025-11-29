@@ -29,8 +29,9 @@ services:
       - .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-shortsai}}
-      NEXT_PUBLIC_APP_URL: http://localhost:80
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:80}
       AUTH_SECRET: ${AUTH_SECRET:-supersecret}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3333/api/auth}
     ports:
       - "8080:3333"
     restart: always
