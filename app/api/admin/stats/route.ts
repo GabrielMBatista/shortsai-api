@@ -10,19 +10,23 @@ export async function GET(req: Request) {
         const currentUser = await prisma.user.findUnique({ where: { email: session.user.email } });
         if ((currentUser as any)?.role !== 'ADMIN') return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const { searchParams } = new URL(req.url);
+        const daysParam = searchParams.get('days');
+        const days = daysParam ? parseInt(daysParam) : 30;
+
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
 
         const [totalUsers, totalProjects, totalScenes, recentUsers, recentProjectsList] = await Promise.all([
             prisma.user.count(),
             prisma.project.count(),
             prisma.scene.count(),
             prisma.user.findMany({
-                where: { created_at: { gte: thirtyDaysAgo } },
+                where: { created_at: { gte: startDate } },
                 select: { created_at: true }
             }),
             prisma.project.findMany({
-                where: { created_at: { gte: thirtyDaysAgo } },
+                where: { created_at: { gte: startDate } },
                 select: { created_at: true }
             })
         ]);
@@ -31,8 +35,8 @@ export async function GET(req: Request) {
         const formatDate = (date: Date) => date.toISOString().split('T')[0];
         const analyticsMap = new Map<string, { date: string, users: number, projects: number }>();
 
-        // Initialize last 30 days
-        for (let i = 0; i < 30; i++) {
+        // Initialize last N days
+        for (let i = 0; i < days; i++) {
             const d = new Date();
             d.setDate(d.getDate() - i);
             const key = formatDate(d);
