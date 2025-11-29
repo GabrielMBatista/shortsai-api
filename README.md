@@ -97,6 +97,37 @@ O projeto inclui um `docker-compose.yml` para orquestrar todo o ambiente (API, B
 *   **Frontend**: http://localhost:3000
 *   **Banco (Local)**: Porta 5432
 
+### 🚀 Deploy em VPS (Produção)
+
+Para rodar em um servidor VPS (ex: Hostinger, DigitalOcean), você deve configurar as variáveis de ambiente para apontar para o seu domínio real.
+
+1.  **Configure o `.env` no VPS**:
+    Adicione ou edite as seguintes variáveis no arquivo `.env` na mesma pasta do `docker-compose.yml`:
+    ```env
+    # URL pública do seu VPS ou Domínio
+    NEXT_PUBLIC_APP_URL=http://seu-dominio-ou-ip.com
+    
+    # URL de Autenticação (NextAuth)
+    AUTH_URL=http://seu-dominio-ou-ip.com/api/auth
+    ```
+
+2.  **Atualize o Google Cloud Console**:
+    Adicione a URI de redirecionamento autorizada:
+    `http://seu-dominio-ou-ip.com/api/auth/callback/google`
+
+3.  **Inicie os Serviços**:
+    ```bash
+    docker-compose up -d --build
+    ```
+
+> **Solução de Problemas (Docker Antigo)**:
+> Se você encontrar o erro `KeyError: 'ContainerConfig'` ao rodar `docker-compose up`, isso se deve a uma incompatibilidade com versões antigas do Docker Compose (v1.x).
+> **Correção**: Remova o container antigo manualmente e tente novamente:
+> ```bash
+> docker rm -f shortsai-studio
+> docker-compose up -d studio
+> ```
+
 ## 📚 Documentação da API
 
 ### Endpoints Principais
