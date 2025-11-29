@@ -109,6 +109,9 @@ Para rodar em um servidor VPS (ex: Hostinger, DigitalOcean), você deve configur
     
     # URL de Autenticação (NextAuth)
     AUTH_URL=http://seu-dominio-ou-ip.com/api/auth
+
+    # URL do Frontend (CORS)
+    FRONTEND_URL=http://seu-dominio-ou-ip.com
     ```
 
 2.  **Atualize o Google Cloud Console**:
