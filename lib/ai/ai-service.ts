@@ -112,7 +112,7 @@ const createWavDataUri = (base64Pcm: string): string => {
     wavBytes.set(headerBytes, 0);
     wavBytes.set(pcmBytes, headerBytes.length);
 
-    return `data: audio / wav; base64, ${uint8ArrayToBase64(wavBytes)} `;
+    return `data:audio/wav;base64,${uint8ArrayToBase64(wavBytes)}`;
 };
 
 const blobToBase64 = async (blob: Blob): Promise<string> => {
