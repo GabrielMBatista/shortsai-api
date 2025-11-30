@@ -69,16 +69,46 @@ export async function GET(req: Request) {
         });
 
         // Process Usage Stats
+        // Process Usage Stats
         const usageStats = usageLogs.reduce((acc, log) => {
             const action = log.action_type;
             if (!acc[action]) {
-                acc[action] = { success: 0, failed: 0, total: 0 };
+                acc[action] = { success: 0, failed: 0, total: 0, errors: [] };
             }
             if (log.status === 'success') acc[action].success += log._count._all;
             if (log.status === 'failed') acc[action].failed += log._count._all;
             acc[action].total += log._count._all;
             return acc;
-        }, {} as Record<string, { success: number, failed: number, total: number }>);
+        }, {} as Record<string, { success: number, failed: number, total: number, errors: { message: string, count: number }[] }>);
+
+        // Fetch top errors
+        const errorLogs = await prisma.usageLog.groupBy({
+            by: ['action_type', 'error_message'],
+            where: {
+                created_at: { gte: startDate },
+                status: 'failed',
+                error_message: { not: null }
+            },
+            _count: {
+                id: true
+            },
+            orderBy: {
+                _count: {
+                    id: 'desc'
+                }
+            },
+            take: 50
+        });
+
+        errorLogs.forEach(log => {
+            const action = log.action_type;
+            if (usageStats[action] && log.error_message && log._count) {
+                usageStats[action].errors.push({
+                    message: log.error_message,
+                    count: log._count.id ?? 0
+                });
+            }
+        });
 
         return NextResponse.json({
             totalUsers,
