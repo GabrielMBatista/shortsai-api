@@ -16,7 +16,7 @@ export async function GET(req: Request) {
         const limit = parseInt(searchParams.get('limit') || '50');
         const status = searchParams.get('status'); // 'success' | 'failed' | 'all'
         const action = searchParams.get('action');
-        const search = searchParams.get('search');
+        const search = searchParams.get('search')?.trim();
 
         const skip = (page - 1) * limit;
 
@@ -50,6 +50,7 @@ export async function GET(req: Request) {
                 { user: { name: { contains: search, mode: 'insensitive' } } },
                 { user: { id: { contains: search, mode: 'insensitive' } } },
                 { project: { id: { contains: search, mode: 'insensitive' } } },
+                { user_id: { in: relatedIds } },
                 // Also find logs where the error message contains the ID of the user found by email/name
                 ...relatedIds.map(id => ({ error_message: { contains: id } }))
             ];

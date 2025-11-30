@@ -226,10 +226,30 @@ export class AIService {
         return { key: systemKey, isSystem: true };
     }
 
-    private static async trackUsage(userId: string, provider: string, model: string, type: 'image' | 'audio' | 'text') {
-        // TODO: Implement DB logging
+    private static async trackUsage(userId: string, provider: string, model: string, type: 'image' | 'audio' | 'text' | 'music') {
         console.log(`[Usage] User ${userId} used ${provider}/${model} for ${type}`);
-        // await prisma.usageLog.create(...)
+
+        let action: any = 'GENERATE_SCRIPT';
+        if (type === 'image') action = 'GENERATE_IMAGE';
+        if (type === 'audio') action = 'GENERATE_TTS';
+        if (type === 'music') action = 'GENERATE_MUSIC';
+        if (type === 'text') action = 'GENERATE_SCRIPT';
+
+        try {
+            await prisma.usageLog.create({
+                data: {
+                    user_id: userId,
+                    action_type: action,
+                    provider: provider,
+                    model_name: model,
+                    status: 'success',
+                    tokens_input: 0, // TODO: Count tokens
+                    tokens_output: 0
+                }
+            });
+        } catch (e) {
+            console.error("Failed to log usage", e);
+        }
     }
 
     static async generateImage(userId: string, prompt: string, style: string, keys?: { gemini?: string }): Promise<string> {
@@ -668,7 +688,7 @@ export class AIService {
             const taskId = resJson.data?.taskId;
             if (!taskId) throw new Error("No taskId returned");
 
-            await this.trackUsage(userId, 'suno', 'V3_5', 'audio');
+            await this.trackUsage(userId, 'suno', 'V3_5', 'music');
 
             return await this.pollForMusicCompletion(taskId, apiKey!, SUNO_BASE_URL);
         }, userId);
