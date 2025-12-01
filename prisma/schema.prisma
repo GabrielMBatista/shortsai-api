@@ -208,6 +208,7 @@ model Scene {
   image_attempts     Int         @default(0)
   audio_attempts     Int         @default(0)
   sfx_attempts       Int         @default(0)
+  video_attempts     Int         @default(0)
   created_at         DateTime    @default(now())
   deleted_at         DateTime?
 
