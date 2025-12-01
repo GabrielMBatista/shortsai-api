@@ -22,8 +22,9 @@ jobs:
             # Pull latest changes
             git pull origin main || git pull origin master
             
-            # Stop existing containers
-            docker-compose down
+            # Stop and remove ONLY the API container
+            docker-compose stop api
+            docker-compose rm -f api
             
-            # Build and start API service
-            docker-compose up -d --build --force-recreate api
+            # Build and start API service (frontend stays untouched)
+            docker-compose up -d --build api
