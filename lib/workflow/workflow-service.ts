@@ -516,7 +516,16 @@ export class WorkflowService {
             const maxAttempts = 2;
 
             let newStatus: SceneStatus = SceneStatus.queued; // Retry by default
-            if (attempts >= maxAttempts) {
+
+            // Check for fatal errors that should NOT be retried
+            const isFatalError = error && (
+                error.includes("API Key missing") ||
+                error.includes("Rate limit exceeded") || // Optional: maybe retry rate limits with longer backoff? For now fail to stop loop.
+                error.includes("Quota hit") ||
+                error.includes("Model Refusal")
+            );
+
+            if (attempts >= maxAttempts || isFatalError) {
                 newStatus = SceneStatus.failed; // Give up
             }
 
