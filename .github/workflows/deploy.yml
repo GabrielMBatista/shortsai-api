@@ -22,6 +22,5 @@ jobs:
             # Pull latest changes
             git pull origin main || git pull origin master
             
-            # Restart services
-            docker-compose down
-            docker-compose up -d --build
+            # Restart API service only
+            docker-compose up -d --build api
