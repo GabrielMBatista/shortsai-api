@@ -756,48 +756,344 @@ export class AIService {
         keys?: { gemini?: string },
         modelType: VeoModelType = 'veo-2' // Default to Veo 2 (higher daily limit)
     ): Promise<string> {
-        const { client: ai, isSystem } = await this.getGeminiClient(userId, keys?.gemini);
+        // Get API key (prefer user key, fallback to system)
+        let apiKey = keys?.gemini;
+        let isSystem = false;
+
+        if (!apiKey) {
+            const dbKeys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
+            apiKey = dbKeys?.gemini_key || undefined;
+        }
+
+        if (!apiKey) {
+            apiKey = process.env.GEMINI_API_KEY;
+            isSystem = true;
+        }
+
+        if (!apiKey) {
+            throw new Error("Gemini API Key missing for video generation.");
+        }
 
         if (isSystem) {
             await this.checkVideoRateLimits(userId);
         }
 
         const base64Data = imageUrl.split(',')[1];
-        // Default to png if not found, but usually it's in the string
-        const mimeType = imageUrl.match(/data:([^;]+);/)?.[1] || 'image/png';
+        const mimeType = imageUrl.match(/data:([^;]+);/)?.[1] || 'image/jpeg';
         const selectedModel = VEO_MODELS[modelType];
 
         return this.executeRequest(isSystem, async () => {
             console.log(`[AIService] Generating video with ${selectedModel} for user ${userId}`);
-            const response = await ai.models.generateContent({
-                model: selectedModel,
-                contents: [
-                    {
-                        role: 'user',
-                        parts: [
-                            { inlineData: { mimeType: mimeType, data: base64Data } },
-                            { text: `Animate this image to be a video background. Cinematic, slow motion. ${prompt}` }
-                        ]
-                    }
-                ],
-                config: {
-                    responseMimeType: "video/mp4"
+
+            // Use REST API predictLongRunning
+            const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:predictLongRunning`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'X-goog-api-key': apiKey!,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        instances: [
+                            {
+                                prompt: `Animate this image to be a video background. Cinematic, slow motion. ${prompt}`,
+                                image: {
+                                    bytesBase64Encoded: base64Data,
+                                    mimeType: mimeType,
+                                },
+                            },
+                        ],
+                        parameters: {
+                            aspectRatio: '9:16', // Vertical video for shorts
+                            negativePrompt: 'abrupt cuts, discontinuity, inconsistent lighting',
+                        },
+                    }),
                 }
+            );
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`[AIService] Veo API Error:`, errorText);
+                throw new Error(`Veo API request failed: ${response.status} - ${errorText}`);
+            }
+
+            const result = await response.json();
+
+            // The API returns an operation that processes async
+            const operationName = result.name;
+
+            if (!operationName) {
+                throw new Error('No operation name returned from Veo API');
+            }
+
+            // Poll for completion
+            const videoUrl = await this.pollVeoOperation(operationName, apiKey);
+
+            // Track usage
+            await prisma.usageLog.create({
+                data: {
+                    user_id: userId,
+                    action_type: 'GENERATE_IMAGE', // Or add GENERATE_VIDEO to enum
+                    details: `Generated video with ${selectedModel} for image with prompt: ${prompt}`,
+                },
             });
 
-            await this.trackUsage(userId, 'gemini', selectedModel, 'image'); // Tracking as image for now or add 'video' type
-
-            const candidate = response.candidates?.[0];
-            if (candidate?.content?.parts) {
-                for (const part of candidate.content.parts) {
-                    if (part.inlineData?.data) {
-                        // It might return video/mp4
-                        return `data:${part.inlineData.mimeType || 'video/mp4'};base64,${part.inlineData.data}`;
-                    }
-                }
-                // Sometimes it might return a file URI if using other tools, but inlineData is expected for small generations
-            }
-            throw new Error("Video generation failed - No video returned");
+            return videoUrl;
         }, userId);
+    }
+
+    private static async pollVeoOperation(operationName: string, apiKey: string): Promise<string> {
+        const maxRetries = 60; // 5 minutes max (5 seconds * 60)
+        const interval = 5000; // 5 seconds
+
+        for (let i = 0; i < maxRetries; i++) {
+            await wait(interval);
+
+            const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/${operationName}`,
+                {
+                    headers: {
+                        'X-goog-api-key': apiKey,
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                console.warn(`[AIService] Poll attempt ${i + 1} failed`);
+                continue;
+            }
+
+            const operation = await response.json();
+
+            if (operation.done) {
+
+                if (!apiKey) throw new Error("Suno API Key missing.");
+
+                const SUNO_BASE_URL = "https://api.sunoapi.org/api/v1";
+
+                const payload = {
+                    customMode: true,
+                    instrumental: true,
+                    style: stylePrompt,
+                    title: "ShortsAI Soundtrack",
+                    model: "V3_5",
+                    callBackUrl: "https://example.com/callback"
+                };
+
+                return this.executeRequest(isSystem, async () => {
+                    const response = await fetch(`${SUNO_BASE_URL}/generate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) throw new Error("Suno Request Failed");
+
+                    const resJson = await response.json();
+                    const taskId = resJson.data?.taskId;
+                    if (!taskId) throw new Error("No taskId returned");
+
+                    await this.trackUsage(userId, 'suno', 'V3_5', 'music');
+
+                    return await this.pollForMusicCompletion(taskId, apiKey!, SUNO_BASE_URL);
+                }, userId);
+            }
+
+    private static async pollForMusicCompletion(taskId: string, apiKey: string, baseUrl: string): Promise<string> {
+        const maxRetries = 60;
+        const interval = 5000;
+
+        for (let i = 0; i < maxRetries; i++) {
+            await wait(interval);
+            try {
+                const res = await fetch(`${baseUrl}/generate/record-info?taskId=${taskId}`, {
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${apiKey}` }
+                });
+                const json = await res.json();
+                const recordData = json.data;
+                const status = recordData?.status;
+
+                if (status === 'SUCCESS' || status === 'FIRST_SUCCESS') {
+                    const clip = recordData.response?.sunoData?.[0];
+                    if (clip?.audioUrl) return clip.audioUrl;
+                }
+                if (['CREATE_TASK_FAILED', 'GENERATE_AUDIO_FAILED'].includes(status)) throw new Error("Music generation failed");
+            } catch (e) { console.warn("Polling error", e); }
+        }
+        throw new Error("Music generation timed out");
+    }
+
+    // --- VIDEO RATE LIMITING ---
+    private static videoRpmCache = new Map<string, { count: number, resetAt: number }>();
+    private static readonly VIDEO_RPM_LIMIT = 2;
+
+    private static async checkVideoRateLimits(userId: string) {
+        const now = Date.now();
+        const userRpm = this.videoRpmCache.get(userId);
+
+        if (userRpm && now < userRpm.resetAt) {
+            if (userRpm.count >= this.VIDEO_RPM_LIMIT) {
+                throw new Error("Video generation rate limit exceeded (2 RPM). Please wait a moment.");
+            }
+            userRpm.count++;
+        } else {
+            this.videoRpmCache.set(userId, { count: 1, resetAt: now + 60000 });
+        }
+    }
+
+    // --- VIDEO GENERATION MODELS ---
+    static async generateVideo(
+        userId: string,
+        imageUrl: string,
+        prompt: string,
+        keys?: { gemini?: string },
+        modelType: VeoModelType = 'veo-2' // Default to Veo 2 (higher daily limit)
+    ): Promise<string> {
+        // Get API key (prefer user key, fallback to system)
+        let apiKey = keys?.gemini;
+        let isSystem = false;
+
+        if (!apiKey) {
+            const dbKeys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
+            apiKey = dbKeys?.gemini_key || undefined;
+        }
+
+        if (!apiKey) {
+            apiKey = process.env.GEMINI_API_KEY;
+            isSystem = true;
+        }
+
+        if (!apiKey) {
+            throw new Error("Gemini API Key missing for video generation.");
+        }
+
+        if (isSystem) {
+            await this.checkVideoRateLimits(userId);
+        }
+
+        const base64Data = imageUrl.split(',')[1];
+        const mimeType = imageUrl.match(/data:([^;]+);/)?.[1] || 'image/jpeg';
+        const selectedModel = VEO_MODELS[modelType];
+
+        return this.executeRequest(isSystem, async () => {
+            console.log(`[AIService] Generating video with ${selectedModel} for user ${userId}`);
+
+            // Use REST API predictLongRunning
+            const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:predictLongRunning`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'X-goog-api-key': apiKey!,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        instances: [
+                            {
+                                prompt: `Animate this image to be a video background. Cinematic, slow motion. ${prompt}`,
+                                image: {
+                                    bytesBase64Encoded: base64Data,
+                                    mimeType: mimeType,
+                                },
+                            },
+                        ],
+                        parameters: {
+                            aspectRatio: '9:16', // Vertical video for shorts
+                            negativePrompt: 'abrupt cuts, discontinuity, inconsistent lighting',
+                        },
+                    }),
+                }
+            );
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`[AIService] Veo API Error:`, errorText);
+                throw new Error(`Veo API request failed: ${response.status} - ${errorText}`);
+            }
+
+            const result = await response.json();
+
+            // The API returns an operation that processes async
+            const operationName = result.name;
+
+            if (!operationName) {
+                throw new Error('No operation name returned from Veo API');
+            }
+
+            // Poll for completion
+            const videoUrl = await this.pollVeoOperation(operationName, apiKey);
+
+            // Track usage
+            await prisma.usageLog.create({
+                data: {
+                    user_id: userId,
+                    action_type: 'GENERATE_IMAGE', // Or add GENERATE_VIDEO to enum
+                    details: `Generated video with ${selectedModel} for image with prompt: ${prompt}`,
+                },
+            });
+
+            return videoUrl;
+        }, userId);
+    }
+
+    private static async pollVeoOperation(operationName: string, apiKey: string): Promise<string> {
+        const maxRetries = 60; // 5 minutes max (5 seconds * 60)
+        const interval = 5000; // 5 seconds
+
+        for (let i = 0; i < maxRetries; i++) {
+            await wait(interval);
+
+            const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/${operationName}`,
+                {
+                    headers: {
+                        'X-goog-api-key': apiKey,
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                console.warn(`[AIService] Poll attempt ${i + 1} failed`);
+                continue;
+            }
+
+            const operation = await response.json();
+
+            if (operation.done) {
+                // Check for error
+                if (operation.error) {
+                    throw new Error(`Video generation failed: ${operation.error.message}`);
+                }
+
+                // Extract video URI from response
+                const videoUri = operation.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
+
+                if (!videoUri) {
+                    console.error('[AIService] No video URI in response:', JSON.stringify(operation.response));
+                    throw new Error('No video URL in completed operation');
+                }
+
+                // Download the video and convert to base64
+                console.log(`[AIService] Downloading video from ${videoUri}`);
+                const videoResponse = await fetch(videoUri, {
+                    headers: {
+                        'X-goog-api-key': apiKey,
+                    },
+                });
+
+                if (!videoResponse.ok) {
+                    throw new Error(`Failed to download video: ${videoResponse.status}`);
+                }
+
+                const videoBuffer = await videoResponse.arrayBuffer();
+                const base64Video = Buffer.from(videoBuffer).toString('base64');
+
+                return `data:video/mp4;base64,${base64Video}`;
+            }
+        }
+
+        throw new Error('Video generation timed out after 5 minutes');
     }
 }
