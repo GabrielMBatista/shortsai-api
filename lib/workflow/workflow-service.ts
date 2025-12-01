@@ -11,6 +11,8 @@ export type WorkflowAction =
     | 'generate_all_audio'
     | 'regenerate_audio'
     | 'generate_music'
+    | 'generate_video'
+    | 'regenerate_video'
     | 'cancel'
     | 'pause'
     | 'resume'
@@ -37,7 +39,7 @@ export interface WorkflowTask {
     id: string; // Unique task ID
     projectId: string;
     sceneId?: string;
-    action: 'generate_image' | 'generate_audio' | 'generate_music';
+    action: 'generate_image' | 'generate_audio' | 'generate_music' | 'generate_video';
     params: WorkflowTaskParams;
     status: 'pending' | 'dispatched' | 'completed' | 'failed';
     createdAt: Date;
@@ -83,6 +85,10 @@ export class WorkflowService {
                 return this.queueSceneAsset(projectId, sceneId, 'audio', force, apiKeys);
             case 'generate_all_audio':
                 return this.generateAllAudio(project, force, apiKeys);
+            case 'generate_video':
+            case 'regenerate_video':
+                if (!sceneId) throw new Error('Scene ID required');
+                return this.queueSceneAsset(projectId, sceneId, 'video', force, apiKeys);
             case 'generate_music':
                 return this.queueMusic(projectId, force, apiKeys);
             case 'cancel':
@@ -304,7 +310,7 @@ export class WorkflowService {
         return { message: 'Audio generation started' };
     }
 
-    private static async queueSceneAsset(projectId: string, sceneId: string, type: 'image' | 'audio', force?: boolean, apiKeys?: any) {
+    private static async queueSceneAsset(projectId: string, sceneId: string, type: 'image' | 'audio' | 'video', force?: boolean, apiKeys?: any) {
         const field = `${type}_status` as keyof Scene;
         const attemptsField = `${type}_attempts` as keyof Scene;
 
@@ -474,7 +480,7 @@ export class WorkflowService {
         return null;
     }
 
-    static async completeTask(projectId: string, sceneId: string | undefined, type: 'image' | 'audio' | 'music', status: 'completed' | 'failed', outputUrl?: string, error?: string, apiKeys?: any, timings?: any[], duration?: number) {
+    static async completeTask(projectId: string, sceneId: string | undefined, type: 'image' | 'audio' | 'music' | 'video', status: 'completed' | 'failed', outputUrl?: string, error?: string, apiKeys?: any, timings?: any[], duration?: number) {
 
         if (type === 'music') {
             if (status === 'completed') {
@@ -616,6 +622,17 @@ export class WorkflowService {
                         id: `task-${scene.id}-audio-${Date.now()}`,
                         projectId, sceneId: scene.id, action: 'generate_audio',
                         params: { text: scene.narration, voice: project.voice_name, provider: project.tts_provider },
+                        status: 'pending', createdAt: new Date(), apiKeys
+                    };
+                    break;
+                }
+                if (scene.video_status === SceneStatus.queued) {
+                    await prisma.scene.update({ where: { id: scene.id }, data: { video_status: SceneStatus.processing } });
+                    broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'video', status: 'processing' });
+                    taskToTrigger = {
+                        id: `task-${scene.id}-video-${Date.now()}`,
+                        projectId, sceneId: scene.id, action: 'generate_video',
+                        params: { prompt: scene.visual_description, width: 1080, height: 1920 },
                         status: 'pending', createdAt: new Date(), apiKeys
                     };
                     break;
@@ -768,7 +785,9 @@ export class WorkflowService {
                 error: s.error_message,
                 visual_description: s.visual_description,
                 narration: s.narration,
-                wordTimings: s.word_timings
+                wordTimings: s.word_timings,
+                video_status: s.video_status,
+                video_url: s.video_url
             })),
             music_status: project.bg_music_status,
             music_url: project.bg_music_url,

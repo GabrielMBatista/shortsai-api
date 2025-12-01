@@ -201,6 +201,8 @@ model Scene {
   audio_status       SceneStatus @default(draft)
   sfx_url            String?
   sfx_status         SceneStatus @default(draft)
+  video_url          String?
+  video_status       SceneStatus @default(draft)
   word_timings       Json?
   error_message      String?
   image_attempts     Int         @default(0)

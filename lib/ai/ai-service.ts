@@ -1,6 +1,17 @@
 import { prisma } from '@/lib/prisma';
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold, Modality } from "@google/genai";
 
+// Video generation model types
+export const VEO_MODELS = {
+    'veo-2': 'veo-2.0-generate-001',           // 50 RPD - Best for high volume
+    'veo-3': 'veo-3.0-generate-001',           // 10 RPD - Higher quality
+    'veo-3-fast': 'veo-3.0-fast-generate-001', // 10 RPD - Faster generation
+    'veo-3.1': 'veo-3.1-generate-001',         // 10 RPD - Latest quality
+    'veo-3.1-fast': 'veo-3.1-fast-generate-001' // 10 RPD - Latest + fast
+} as const;
+
+export type VeoModelType = keyof typeof VEO_MODELS;
+
 // --- QUEUE & RETRY LOGIC ---
 class RequestQueue {
     private queue: (() => Promise<void>)[] = [];
@@ -717,5 +728,76 @@ export class AIService {
             } catch (e) { console.warn("Polling error", e); }
         }
         throw new Error("Music generation timed out");
+    }
+
+    // --- VIDEO RATE LIMITING ---
+    private static videoRpmCache = new Map<string, { count: number, resetAt: number }>();
+    private static readonly VIDEO_RPM_LIMIT = 2;
+
+    private static async checkVideoRateLimits(userId: string) {
+        const now = Date.now();
+        const userRpm = this.videoRpmCache.get(userId);
+
+        if (userRpm && now < userRpm.resetAt) {
+            if (userRpm.count >= this.VIDEO_RPM_LIMIT) {
+                throw new Error("Video generation rate limit exceeded (2 RPM). Please wait a moment.");
+            }
+            userRpm.count++;
+        } else {
+            this.videoRpmCache.set(userId, { count: 1, resetAt: now + 60000 });
+        }
+    }
+
+    // --- VIDEO GENERATION MODELS ---
+    static async generateVideo(
+        userId: string,
+        imageUrl: string,
+        prompt: string,
+        keys?: { gemini?: string },
+        modelType: VeoModelType = 'veo-2' // Default to Veo 2 (higher daily limit)
+    ): Promise<string> {
+        const { client: ai, isSystem } = await this.getGeminiClient(userId, keys?.gemini);
+
+        if (isSystem) {
+            await this.checkVideoRateLimits(userId);
+        }
+
+        const base64Data = imageUrl.split(',')[1];
+        // Default to png if not found, but usually it's in the string
+        const mimeType = imageUrl.match(/data:([^;]+);/)?.[1] || 'image/png';
+        const selectedModel = VEO_MODELS[modelType];
+
+        return this.executeRequest(isSystem, async () => {
+            console.log(`[AIService] Generating video with ${selectedModel} for user ${userId}`);
+            const response = await ai.models.generateContent({
+                model: selectedModel,
+                contents: [
+                    {
+                        role: 'user',
+                        parts: [
+                            { inlineData: { mimeType: mimeType, data: base64Data } },
+                            { text: `Animate this image to be a video background. Cinematic, slow motion. ${prompt}` }
+                        ]
+                    }
+                ],
+                config: {
+                    responseMimeType: "video/mp4"
+                }
+            });
+
+            await this.trackUsage(userId, 'gemini', selectedModel, 'image'); // Tracking as image for now or add 'video' type
+
+            const candidate = response.candidates?.[0];
+            if (candidate?.content?.parts) {
+                for (const part of candidate.content.parts) {
+                    if (part.inlineData?.data) {
+                        // It might return video/mp4
+                        return `data:${part.inlineData.mimeType || 'video/mp4'};base64,${part.inlineData.data}`;
+                    }
+                }
+                // Sometimes it might return a file URI if using other tools, but inlineData is expected for small generations
+            }
+            throw new Error("Video generation failed - No video returned");
+        }, userId);
     }
 }
