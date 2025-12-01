@@ -47,7 +47,7 @@ export class VideoService {
                     body: JSON.stringify({
                         instances: [
                             {
-                                prompt: `Animate this image to be a video background. Cinematic, slow motion. ${prompt}`,
+                                prompt: `Cinematic slow motion animation of this image. Ambient movement, high quality video background.`,
                                 image: {
                                     bytesBase64Encoded: base64Data,
                                     mimeType: mimeType,
