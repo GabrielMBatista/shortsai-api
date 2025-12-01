@@ -120,17 +120,29 @@ export class WorkflowService {
                 });
             }
         } else {
-            // If not forced, only set DRAFT items to pending
+            // If not forced, reset DRAFT, PROCESSING, LOADING, and FAILED items to pending
+            // This ensures we unblock stuck tasks and retry failures
             await prisma.scene.updateMany({
-                where: { project_id: project.id, image_status: SceneStatus.draft },
+                where: {
+                    project_id: project.id,
+                    image_status: { in: [SceneStatus.draft, SceneStatus.processing, SceneStatus.loading, SceneStatus.failed] }
+                },
                 data: { image_status: SceneStatus.pending }
             });
             await prisma.scene.updateMany({
-                where: { project_id: project.id, audio_status: SceneStatus.draft },
+                where: {
+                    project_id: project.id,
+                    audio_status: { in: [SceneStatus.draft, SceneStatus.processing, SceneStatus.loading, SceneStatus.failed] }
+                },
                 data: { audio_status: SceneStatus.pending }
             });
 
-            if (project.include_music && (project.bg_music_status === MusicStatus.draft || !project.bg_music_status)) {
+            if (project.include_music && (
+                project.bg_music_status === MusicStatus.draft ||
+                !project.bg_music_status ||
+                project.bg_music_status === MusicStatus.loading ||
+                project.bg_music_status === MusicStatus.failed
+            )) {
                 await prisma.project.update({
                     where: { id: project.id },
                     data: { bg_music_status: MusicStatus.pending }
@@ -190,7 +202,10 @@ export class WorkflowService {
             });
         } else {
             await prisma.scene.updateMany({
-                where: { project_id: project.id, image_status: SceneStatus.draft },
+                where: {
+                    project_id: project.id,
+                    image_status: { in: [SceneStatus.draft, SceneStatus.processing, SceneStatus.loading, SceneStatus.failed] }
+                },
                 data: { image_status: SceneStatus.pending }
             });
         }
@@ -244,7 +259,10 @@ export class WorkflowService {
             });
         } else {
             await prisma.scene.updateMany({
-                where: { project_id: project.id, audio_status: SceneStatus.draft },
+                where: {
+                    project_id: project.id,
+                    audio_status: { in: [SceneStatus.draft, SceneStatus.processing, SceneStatus.loading, SceneStatus.failed] }
+                },
                 data: { audio_status: SceneStatus.pending }
             });
         }
