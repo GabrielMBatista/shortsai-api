@@ -59,6 +59,7 @@ enum UsageLogAction {
   GENERATE_IMAGE
   GENERATE_TTS
   GENERATE_MUSIC
+  GENERATE_VIDEO
 }
 
 enum UsageLogStatus {
