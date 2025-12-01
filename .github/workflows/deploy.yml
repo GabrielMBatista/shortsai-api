@@ -16,15 +16,28 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
           script: |
-            # Navigate to the API project folder (where docker-compose.yml is)
+            # Navigate to the API project folder
             cd ${{ secrets.VPS_API_PATH }}
             
             # Pull latest changes
             git pull origin main || git pull origin master
             
             # Stop and remove ONLY the API container
-            docker-compose stop api
-            docker-compose rm -f api
+            docker-compose stop api || true
+            docker-compose rm -f api || true
             
-            # Build and start API service (frontend stays untouched)
+            # Build and start API service
             docker-compose up -d --build api
+            
+            # Wait for container to be healthy
+            echo "Waiting for API to be ready..."
+            sleep 10
+            
+            # Verify API is running
+            if ! docker-compose ps api | grep -q "Up"; then
+              echo "ERROR: API container failed to start!"
+              docker-compose logs api --tail=100
+              exit 1
+            fi
+            
+            echo "✅ API deployed successfully"
