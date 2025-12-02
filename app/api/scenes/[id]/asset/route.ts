@@ -13,9 +13,10 @@ export async function PATCH(
         const body = await request.json();
 
         // Determine type based on payload keys
-        let type: 'image' | 'audio' | null = null;
+        let type: 'image' | 'audio' | 'video' | null = null;
         if (body.image_url && body.image_status) type = 'image';
         else if (body.audio_url && body.audio_status) type = 'audio';
+        else if (body.video_url && body.video_status) type = 'video';
 
         if (!type) {
             return NextResponse.json({ error: 'Invalid payload. Must contain image_url/status or audio_url/status' }, { status: 400 });

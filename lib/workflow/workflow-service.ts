@@ -182,7 +182,9 @@ export class WorkflowService {
                     errorMessage: s.error_message,
                     visualDescription: s.visual_description,
                     narration: s.narration,
-                    durationSeconds: s.duration_seconds
+                    durationSeconds: s.duration_seconds,
+                    videoStatus: (s as any).video_status,
+                    videoUrl: (s as any).video_url
                 })),
                 bgMusicStatus: updatedProject.bg_music_status,
                 bgMusicUrl: updatedProject.bg_music_url
@@ -241,7 +243,9 @@ export class WorkflowService {
                     errorMessage: s.error_message,
                     visualDescription: s.visual_description,
                     narration: s.narration,
-                    durationSeconds: s.duration_seconds
+                    durationSeconds: s.duration_seconds,
+                    videoStatus: (s as any).video_status,
+                    videoUrl: (s as any).video_url
                 })),
                 bgMusicStatus: updatedProject.bg_music_status,
                 bgMusicUrl: updatedProject.bg_music_url
@@ -298,7 +302,9 @@ export class WorkflowService {
                     errorMessage: s.error_message,
                     visualDescription: s.visual_description,
                     narration: s.narration,
-                    durationSeconds: s.duration_seconds
+                    durationSeconds: s.duration_seconds,
+                    videoStatus: (s as any).video_status,
+                    videoUrl: (s as any).video_url
                 })),
                 bgMusicStatus: updatedProject.bg_music_status,
                 bgMusicUrl: updatedProject.bg_music_url
@@ -422,7 +428,9 @@ export class WorkflowService {
                     errorMessage: s.error_message,
                     visualDescription: s.visual_description,
                     narration: s.narration,
-                    durationSeconds: s.duration_seconds
+                    durationSeconds: s.duration_seconds,
+                    videoStatus: (s as any).video_status,
+                    videoUrl: (s as any).video_url
                 })),
                 bgMusicStatus: updatedProject.bg_music_status,
                 bgMusicUrl: updatedProject.bg_music_url
@@ -626,8 +634,8 @@ export class WorkflowService {
                     };
                     break;
                 }
-                if (scene.video_status === SceneStatus.queued) {
-                    await prisma.scene.update({ where: { id: scene.id }, data: { video_status: SceneStatus.processing } });
+                if ((scene as any).video_status === SceneStatus.queued) {
+                    await prisma.scene.update({ where: { id: scene.id }, data: { video_status: SceneStatus.processing } as any });
                     broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'video', status: 'processing' });
                     taskToTrigger = {
                         id: `task-${scene.id}-video-${Date.now()}`,
@@ -786,8 +794,8 @@ export class WorkflowService {
                 visual_description: s.visual_description,
                 narration: s.narration,
                 wordTimings: s.word_timings,
-                video_status: s.video_status,
-                video_url: s.video_url
+                video_status: (s as any).video_status,
+                video_url: (s as any).video_url
             })),
             music_status: project.bg_music_status,
             music_url: project.bg_music_url,
