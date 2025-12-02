@@ -78,11 +78,14 @@ export async function POST(request: Request) {
                     if (task.sceneId) {
                         const scene = await prisma.scene.findUnique({ where: { id: task.sceneId } });
                         if (scene && scene.image_url) {
+                            const params = task.params as any;
                             outputUrl = await AIService.generateVideo(
                                 project.user_id,
                                 scene.image_url,
                                 'prompt' in task.params ? task.params.prompt : '',
-                                task.apiKeys
+                                task.apiKeys,
+                                params.model || 'veo-2.0-generate-001',
+                                params.with_audio || false
                             );
                         } else {
                             throw new Error("Scene image not found for video generation");

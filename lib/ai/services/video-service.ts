@@ -6,10 +6,8 @@ import { wait } from '../core/queue';
 
 export const VEO_MODELS = {
     'veo-2': 'veo-2.0-generate-001',           // 50 RPD - Best for high volume
-    'veo-3': 'veo-3.0-generate-001',           // 10 RPD - Higher quality
+    'veo-3': 'veo-3.0-generate-preview',           // 10 RPD - Higher quality
     'veo-3-fast': 'veo-3.0-fast-generate-preview', // 10 RPD - Faster generation
-    'veo-3.1': 'veo-3.1-generate-001',         // 10 RPD - Latest quality
-    'veo-3.1-fast': 'veo-3.1-fast-generate-001' // 10 RPD - Latest + fast
 } as const;
 
 export type VeoModelType = keyof typeof VEO_MODELS;
@@ -20,17 +18,20 @@ export class VideoService {
         imageUrl: string,
         prompt: string,
         keys?: { gemini?: string },
-        modelType: VeoModelType = 'veo-2' // Default to Veo 2 (higher daily limit)
+        modelId: string = 'veo-2.0-generate-001',
+        withAudio: boolean = false
     ): Promise<string> {
         const { key: apiKey, isSystem } = await KeyManager.getGeminiKey(userId, keys?.gemini);
 
         if (isSystem) {
-            await RateLimiter.checkVideoRateLimits(userId);
+            await RateLimiter.checkVideoRateLimits(userId, modelId);
         }
 
         const base64Data = imageUrl.split(',')[1];
         const mimeType = imageUrl.match(/data:([^;]+);/)?.[1] || 'image/jpeg';
-        const selectedModel = VEO_MODELS[modelType];
+
+        let selectedModel = modelId;
+        if (selectedModel === 'veo') selectedModel = 'veo-2.0-generate-001';
 
         return executeRequest(isSystem, async () => {
             console.log(`[AIService] Generating video with ${selectedModel} for user ${userId}`);

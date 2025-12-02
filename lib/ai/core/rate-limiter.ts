@@ -57,7 +57,8 @@ export class RateLimiter {
     private static videoRpmCache = new Map<string, { count: number, resetAt: number }>();
     private static readonly VIDEO_RPM_LIMIT = 2;
 
-    static async checkVideoRateLimits(userId: string) {
+    static async checkVideoRateLimits(userId: string, modelId: string = 'veo-2.0-generate-001') {
+        // 1. Check RPM (In-Memory)
         const now = Date.now();
         const userRpm = this.videoRpmCache.get(userId);
 
@@ -68,6 +69,42 @@ export class RateLimiter {
             userRpm.count++;
         } else {
             this.videoRpmCache.set(userId, { count: 1, resetAt: now + 60000 });
+        }
+
+        // 2. Check Daily Limits (Database)
+        const limits = await prisma.userLimits.findUnique({ where: { user_id: userId } });
+        if (!limits) {
+            await prisma.userLimits.create({ data: { user_id: userId } });
+            return;
+        }
+
+        const today = new Date();
+        const lastReset = new Date(limits.last_daily_reset);
+        const isNewDay = today.getDate() !== lastReset.getDate() || today.getMonth() !== lastReset.getMonth();
+
+        // Determine limit based on model
+        let dailyLimit = 10; // Default / Veo 3
+        if (modelId.includes('veo-2.0')) {
+            dailyLimit = 50;
+        }
+
+        if (isNewDay) {
+            await prisma.userLimits.update({
+                where: { user_id: userId },
+                data: {
+                    current_daily_requests: 0,
+                    current_daily_videos: 1, // Count this one
+                    last_daily_reset: today
+                }
+            });
+        } else {
+            if (limits.current_daily_videos >= dailyLimit) {
+                throw new Error(`Daily video limit exceeded for ${modelId} (${dailyLimit}/day).`);
+            }
+            await prisma.userLimits.update({
+                where: { user_id: userId },
+                data: { current_daily_videos: { increment: 1 } }
+            });
         }
     }
 }

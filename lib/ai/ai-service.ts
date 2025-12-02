@@ -35,9 +35,10 @@ export class AIService {
         imageUrl: string,
         prompt: string,
         keys?: { gemini?: string },
-        modelType: VeoModelType = 'veo-2'
+        modelId: string = 'veo-2.0-generate-001',
+        withAudio: boolean = false
     ) {
-        return VideoService.generateVideo(userId, imageUrl, prompt, keys, modelType);
+        return VideoService.generateVideo(userId, imageUrl, prompt, keys, modelId, withAudio);
     }
 
     static async generateAudio(userId: string, text: string, voice: string, provider: string, keys?: { gemini?: string, elevenlabs?: string, groq?: string }) {
