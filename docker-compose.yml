@@ -1,12 +1,11 @@
 version: '3.8'
 
 services:
-  # Database Service (PostgreSQL) - Optional (Profile: local)
-  # To use local DB: docker-compose --profile local up
+  # Database Service (PostgreSQL)
   db:
     image: postgres:15-alpine
     container_name: shortsai-db
-    profiles: ["local"]
+    profiles: ["local", "production"] # Enabled for prod now if needed, or remove profile to always run
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -38,28 +37,10 @@ services:
     networks:
       - shortsai-network
 
-  # Frontend Service (Vite + Nginx)
-  # Assumes shortai-studio is located at ../shortai-studio
-  studio:
-    build:
-      context: ../shortai-studio
-      dockerfile: Dockerfile
-      args:
-        VITE_API_URL: /api
-    container_name: shortsai-studio
-    ports:
-      - "3000:80"
-    environment:
-      - VITE_API_URL=/api
-    depends_on:
-      - api
-    restart: always
-    networks:
-      - shortsai-network
-
 volumes:
   postgres_data:
 
 networks:
   shortsai-network:
+    name: shortsai-network
     driver: bridge

@@ -22,7 +22,7 @@ jobs:
             # Pull latest changes
             git pull origin main || git pull origin master
             
-            # Stop and remove ONLY the API container
+            # Stop and remove ONLY the API container (optional, but good for clean slate)
             docker-compose stop api || true
             docker-compose rm -f api || true
             
