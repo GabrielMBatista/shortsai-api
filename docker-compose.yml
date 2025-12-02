@@ -23,7 +23,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: shortsai-api
+    # container_name: shortsai-api # Removed to allow rolling updates
     env_file:
       - .env
     environment:
@@ -35,7 +35,9 @@ services:
       - "3333:3333"
     restart: always
     networks:
-      - shortsai-network
+      shortsai-network:
+        aliases:
+          - shortsai-api
 
 volumes:
   postgres_data:
