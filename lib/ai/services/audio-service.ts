@@ -38,8 +38,6 @@ export class AudioService {
                 throw new Error(`Groq API Error: ${errText}`);
             }
 
-            await trackUsage(userId, 'groq', 'playai-tts', 'audio');
-
             const arrayBuffer = await response.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
             const base64Audio = buffer.toString('base64');
@@ -56,6 +54,8 @@ export class AudioService {
                     duration = buffer.length / 48000;
                 }
             }
+
+            await trackUsage(userId, 'groq', 'playai-tts', 'audio', duration);
 
             return { url, duration };
         }, userId);
@@ -85,8 +85,6 @@ export class AudioService {
                 const errText = await response.text();
                 throw new Error(`ElevenLabs Error: ${errText}`);
             }
-
-            await trackUsage(userId, 'elevenlabs', modelId, 'audio');
 
             const data = await response.json();
             const base64Audio = data.audio_base64;
@@ -135,6 +133,8 @@ export class AudioService {
                 duration = bufferLength / 16000;
             }
 
+            await trackUsage(userId, 'elevenlabs', modelId, 'audio', duration);
+
             return { url, timings, duration };
         }, userId);
     }
@@ -152,8 +152,6 @@ export class AudioService {
                 },
             });
 
-            await trackUsage(userId, 'gemini', 'gemini-2.5-flash-preview-tts', 'audio');
-
             const candidate = response.candidates?.[0];
             if (candidate?.content?.parts?.[0]?.inlineData?.data) {
                 const rawPcmBase64 = candidate.content.parts[0].inlineData.data;
@@ -163,6 +161,8 @@ export class AudioService {
                 const duration = binaryString.length / 2 / 24000;
 
                 console.log('[Gemini TTS] Generated WAV audio, size:', wavDataUri.length, 'chars', 'Duration:', duration.toFixed(2), 's');
+
+                await trackUsage(userId, 'gemini', 'gemini-2.5-flash-preview-tts', 'audio', duration);
 
                 return { url: wavDataUri, duration };
             }

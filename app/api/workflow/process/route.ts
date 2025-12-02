@@ -26,6 +26,19 @@ export async function POST(request: Request) {
         let timings: any[] | undefined;
         let duration: number | undefined;
 
+        // Check Limits
+        const limitType = task.action === 'generate_image' ? 'image' :
+            (task.action === 'generate_audio' ? 'audio' :
+                (task.action === 'generate_video' ? 'video' : null));
+
+        if (limitType) {
+            const { checkLimits } = await import('@/lib/ai/core/usage-tracker');
+            const allowed = await checkLimits(project.user_id, limitType as any);
+            if (!allowed) {
+                throw new Error(`Quota exceeded for ${limitType}. Please upgrade your plan.`);
+            }
+        }
+
         try {
             switch (task.action) {
                 case 'generate_image':
