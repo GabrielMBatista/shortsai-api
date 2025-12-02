@@ -524,7 +524,7 @@ export class WorkflowService {
                     [fieldStatus]: SceneStatus.completed,
                     [fieldUrl]: outputUrl,
                     word_timings: timings || undefined,
-                    duration_seconds: duration ? Math.ceil(duration) : undefined,
+                    duration_seconds: duration || undefined,
                     error_message: null
                 }
             });
@@ -548,7 +548,7 @@ export class WorkflowService {
                 status: 'completed',
                 url: outputUrl,
                 timings: timings,
-                duration: duration ? Math.ceil(duration) : undefined
+                duration: duration || undefined
             });
 
             // Trigger next step in sequence
