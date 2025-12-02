@@ -97,7 +97,36 @@ model User {
   characters  Character[]
   usage_logs  UsageLog[]
 
+  // Plan Relation
+  plan_id       String?
+  plan          Plan?    @relation(fields: [plan_id], references: [id])
+
   @@map("users")
+}
+
+model Plan {
+  id          String   @id @default(uuid())
+  name        String   @unique // e.g., "Free", "Pro", "Agency"
+  slug        String   @unique // e.g., "free", "pro"
+  description String?
+  price       Decimal  @default(0)
+  
+  // Limits Definition
+  monthly_images_limit      Int @default(10)
+  monthly_videos_limit      Int @default(5)
+  monthly_minutes_tts       Int @default(10)
+  daily_requests_limit      Int @default(50)
+  daily_videos_limit        Int @default(2)
+  
+  // Features (JSON for flexibility)
+  features    Json?    // e.g. { "no_watermark": true, "priority_support": true }
+  
+  users       User[]
+  
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@map("plans")
 }
 
 model Account {

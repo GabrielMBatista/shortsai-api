@@ -62,8 +62,7 @@ export async function checkLimits(userId: string, type: 'image' | 'audio' | 'vid
     if (type === 'video') {
         if (limits.current_videos_used >= limits.monthly_videos_limit) {
             console.warn(`[UsageTracker] Video limit exceeded for user ${userId}. Used: ${limits.current_videos_used}, Limit: ${limits.monthly_videos_limit}`);
-            // return false; // TEMPORARY: Allow overage for testing
-            return true;
+            return false;
         }
         return true;
     }

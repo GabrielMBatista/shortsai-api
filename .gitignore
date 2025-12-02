@@ -42,3 +42,8 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
+
+seed-plans.ts
+seed-plans.js
+seed.sql
+update-limits.ts
