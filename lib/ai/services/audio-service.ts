@@ -128,6 +128,13 @@ export class AudioService {
                 duration = alignment.character_end_times_seconds[alignment.character_end_times_seconds.length - 1];
             }
 
+            // Fallback: Estimate from file size (assuming ~128kbps for ElevenLabs MP3)
+            if (!duration && base64Audio) {
+                const bufferLength = Buffer.from(base64Audio, 'base64').length;
+                // 128kbps = 16000 bytes/sec
+                duration = bufferLength / 16000;
+            }
+
             return { url, timings, duration };
         }, userId);
     }

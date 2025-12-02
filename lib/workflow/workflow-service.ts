@@ -493,6 +493,9 @@ export class WorkflowService {
     }
 
     static async completeTask(projectId: string, sceneId: string | undefined, type: 'image' | 'audio' | 'music' | 'video', status: 'completed' | 'failed', outputUrl?: string, error?: string, apiKeys?: any, timings?: any[], duration?: number) {
+        if (type === 'audio') {
+            console.log(`[WorkflowService] Completing audio task for scene ${sceneId}. Duration: ${duration}`);
+        }
 
         if (type === 'music') {
             if (status === 'completed') {
@@ -524,7 +527,7 @@ export class WorkflowService {
                     [fieldStatus]: SceneStatus.completed,
                     [fieldUrl]: outputUrl,
                     word_timings: timings || undefined,
-                    duration_seconds: duration || undefined,
+                    duration_seconds: (typeof duration === 'number') ? duration : undefined,
                     error_message: null
                 }
             });
@@ -548,7 +551,7 @@ export class WorkflowService {
                 status: 'completed',
                 url: outputUrl,
                 timings: timings,
-                duration: duration || undefined
+                duration: (typeof duration === 'number') ? duration : undefined
             });
 
             // Trigger next step in sequence
