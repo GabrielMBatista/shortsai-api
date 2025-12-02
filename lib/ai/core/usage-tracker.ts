@@ -60,7 +60,11 @@ export async function checkLimits(userId: string, type: 'image' | 'audio' | 'vid
         return Number(limits.current_minutes_tts_used) < limits.monthly_minutes_tts;
     }
     if (type === 'video') {
-        return limits.current_videos_used < limits.monthly_videos_limit;
+        if (limits.current_videos_used >= limits.monthly_videos_limit) {
+            console.warn(`[UsageTracker] Video limit exceeded for user ${userId}. Used: ${limits.current_videos_used}, Limit: ${limits.monthly_videos_limit}`);
+            return false;
+        }
+        return true;
     }
     return true;
 }

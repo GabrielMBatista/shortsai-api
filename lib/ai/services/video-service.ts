@@ -22,6 +22,7 @@ export class VideoService {
         withAudio: boolean = false
     ): Promise<string> {
         const { key: apiKey, isSystem } = await KeyManager.getGeminiKey(userId, keys?.gemini);
+        console.log(`[VideoService] Using API Key: ${apiKey.substring(0, 8)}... (System Key: ${isSystem})`);
 
         if (isSystem) {
             await RateLimiter.checkVideoRateLimits(userId, modelId);
