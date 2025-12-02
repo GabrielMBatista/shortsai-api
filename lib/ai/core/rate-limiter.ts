@@ -57,26 +57,36 @@ export class RateLimiter {
     private static videoRpmCache = new Map<string, { count: number, resetAt: number }>();
     private static readonly VIDEO_RPM_LIMIT = 2;
 
-    static async checkVideoCooldown(userId: string) {
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { last_video_generated_at: true }
-        });
+    static async acquireVideoSlot(userId: string) {
+        const cooldownMs = 40000;
+        const threshold = new Date(Date.now() - cooldownMs);
 
-        if (user?.last_video_generated_at) {
-            const diff = Date.now() - user.last_video_generated_at.getTime();
-            if (diff < 40000) { // 40 seconds
-                const waitSeconds = Math.ceil((40000 - diff) / 1000);
-                throw new Error(`Please wait ${waitSeconds}s before generating another video.`);
+        // Atomic update: only succeeds if enough time has passed
+        const result = await prisma.user.updateMany({
+            where: {
+                id: userId,
+                OR: [
+                    { last_video_generated_at: null },
+                    { last_video_generated_at: { lt: threshold } }
+                ]
+            },
+            data: {
+                last_video_generated_at: new Date()
             }
-        }
-    }
-
-    static async updateVideoTimestamp(userId: string) {
-        await prisma.user.update({
-            where: { id: userId },
-            data: { last_video_generated_at: new Date() }
         });
+
+        if (result.count === 0) {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { last_video_generated_at: true }
+            });
+            if (user?.last_video_generated_at) {
+                const diff = Date.now() - user.last_video_generated_at.getTime();
+                const waitSeconds = Math.ceil((cooldownMs - diff) / 1000);
+                throw new Error(`Please wait ${Math.max(1, waitSeconds)}s before generating another video.`);
+            }
+            throw new Error("Rate limit exceeded. Please wait.");
+        }
     }
 
     static async checkVideoRateLimits(userId: string, modelId: string = 'veo-2.0-generate-001') {
@@ -93,15 +103,12 @@ export class RateLimiter {
             this.videoRpmCache.set(userId, { count: 1, resetAt: now + 60000 });
         }
 
-        // 2. Check 40s Cooldown
-        await this.checkVideoCooldown(userId);
+        // Note: Cooldown is now handled by acquireVideoSlot called before this
 
-        // 3. Check Daily Limits (Database - UserLimits Table)
+        // 2. Check Daily Limits (Database - UserLimits Table)
         const limits = await prisma.userLimits.findUnique({ where: { user_id: userId } });
         if (!limits) {
             await prisma.userLimits.create({ data: { user_id: userId } });
-            // We still need to update the last_video_generated_at
-            await this.updateVideoTimestamp(userId);
             return;
         }
 
@@ -116,34 +123,22 @@ export class RateLimiter {
         }
 
         if (isNewDay) {
-            await prisma.$transaction([
-                prisma.userLimits.update({
-                    where: { user_id: userId },
-                    data: {
-                        current_daily_requests: 0,
-                        current_daily_videos: 1, // Count this one
-                        last_daily_reset: today
-                    }
-                }),
-                prisma.user.update({
-                    where: { id: userId },
-                    data: { last_video_generated_at: today }
-                })
-            ]);
+            await prisma.userLimits.update({
+                where: { user_id: userId },
+                data: {
+                    current_daily_requests: 0,
+                    current_daily_videos: 1, // Count this one
+                    last_daily_reset: today
+                }
+            });
         } else {
             if (limits.current_daily_videos >= dailyLimit) {
                 throw new Error(`Daily video limit exceeded for ${modelId} (${dailyLimit}/day).`);
             }
-            await prisma.$transaction([
-                prisma.userLimits.update({
-                    where: { user_id: userId },
-                    data: { current_daily_videos: { increment: 1 } }
-                }),
-                prisma.user.update({
-                    where: { id: userId },
-                    data: { last_video_generated_at: new Date() }
-                })
-            ]);
+            await prisma.userLimits.update({
+                where: { user_id: userId },
+                data: { current_daily_videos: { increment: 1 } }
+            });
         }
     }
 }

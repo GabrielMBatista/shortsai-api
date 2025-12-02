@@ -25,13 +25,11 @@ export class VideoService {
         console.log(`[VideoService] Using API Key: ${apiKey.substring(0, 8)}... (System Key: ${isSystem})`);
 
         // 1. Always check cooldown (40s rule) to prevent 429s
-        await RateLimiter.checkVideoCooldown(userId);
+        // This atomically checks AND updates the timestamp if valid
+        await RateLimiter.acquireVideoSlot(userId);
 
         if (isSystem) {
             await RateLimiter.checkVideoRateLimits(userId, modelId);
-        } else {
-            // For personal keys, we just update the timestamp to enforce cooldown on next request
-            await RateLimiter.updateVideoTimestamp(userId);
         }
 
         const base64Data = imageUrl.split(',')[1];
