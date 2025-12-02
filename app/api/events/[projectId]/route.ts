@@ -40,7 +40,10 @@ export async function GET(
                             errorMessage: s.error_message,
                             visualDescription: s.visual_description,
                             narration: s.narration,
-                            durationSeconds: s.duration_seconds
+                            durationSeconds: s.duration_seconds,
+                            videoStatus: (s as any).video_status,
+                            videoUrl: (s as any).video_url,
+                            mediaType: (s as any).media_type
                         })),
                         bgMusicStatus: project.bg_music_status,
                         bgMusicUrl: project.bg_music_url

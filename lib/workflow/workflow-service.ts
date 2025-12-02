@@ -184,7 +184,8 @@ export class WorkflowService {
                     narration: s.narration,
                     durationSeconds: s.duration_seconds,
                     videoStatus: (s as any).video_status,
-                    videoUrl: (s as any).video_url
+                    videoUrl: (s as any).video_url,
+                    mediaType: (s as any).media_type
                 })),
                 bgMusicStatus: updatedProject.bg_music_status,
                 bgMusicUrl: updatedProject.bg_music_url
@@ -245,7 +246,8 @@ export class WorkflowService {
                     narration: s.narration,
                     durationSeconds: s.duration_seconds,
                     videoStatus: (s as any).video_status,
-                    videoUrl: (s as any).video_url
+                    videoUrl: (s as any).video_url,
+                    mediaType: (s as any).media_type
                 })),
                 bgMusicStatus: updatedProject.bg_music_status,
                 bgMusicUrl: updatedProject.bg_music_url
@@ -304,7 +306,8 @@ export class WorkflowService {
                     narration: s.narration,
                     durationSeconds: s.duration_seconds,
                     videoStatus: (s as any).video_status,
-                    videoUrl: (s as any).video_url
+                    videoUrl: (s as any).video_url,
+                    mediaType: (s as any).media_type
                 })),
                 bgMusicStatus: updatedProject.bg_music_status,
                 bgMusicUrl: updatedProject.bg_music_url
@@ -430,7 +433,8 @@ export class WorkflowService {
                     narration: s.narration,
                     durationSeconds: s.duration_seconds,
                     videoStatus: (s as any).video_status,
-                    videoUrl: (s as any).video_url
+                    videoUrl: (s as any).video_url,
+                    mediaType: (s as any).media_type
                 })),
                 bgMusicStatus: updatedProject.bg_music_status,
                 bgMusicUrl: updatedProject.bg_music_url
@@ -525,6 +529,17 @@ export class WorkflowService {
                 }
             });
 
+            // Update user last_video_generated_at if it was a video task
+            if (type === 'video') {
+                const project = await prisma.project.findUnique({ where: { id: projectId }, select: { user_id: true } });
+                if (project) {
+                    await prisma.user.update({
+                        where: { id: project.user_id },
+                        data: { last_video_generated_at: new Date() } as any
+                    });
+                }
+            }
+
             // Broadcast update via SSE
             broadcastProjectUpdate(projectId, {
                 type: 'scene_update',
@@ -593,6 +608,7 @@ export class WorkflowService {
         if (!project) return;
 
         let taskToTrigger: WorkflowTask | null = null;
+        let rateLimitDelay: number | null = null;
 
         // 1. PRIORITY: Check for QUEUED items (Manual Overrides or Retries)
         // Check Music Queue
@@ -635,6 +651,22 @@ export class WorkflowService {
                     break;
                 }
                 if ((scene as any).video_status === SceneStatus.queued) {
+                    // Check rate limit
+                    const user = await prisma.user.findUnique({ where: { id: project.user_id } });
+                    const lastGenerated = (user as any)?.last_video_generated_at;
+                    const now = new Date();
+                    const timeSinceLast = lastGenerated ? now.getTime() - lastGenerated.getTime() : Infinity;
+                    const DELAY_MS = 40000; // 40 seconds
+
+                    if (timeSinceLast < DELAY_MS) {
+                        const waitTime = DELAY_MS - timeSinceLast;
+                        console.log(`[WorkflowService] Rate limit hit for user ${project.user_id}. Waiting ${waitTime}ms`);
+                        if (rateLimitDelay === null || waitTime < rateLimitDelay) {
+                            rateLimitDelay = waitTime;
+                        }
+                        continue; // Skip this video, look for others
+                    }
+
                     await prisma.scene.update({ where: { id: scene.id }, data: { video_status: SceneStatus.processing } as any });
                     broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'video', status: 'processing' });
                     taskToTrigger = {
@@ -653,6 +685,7 @@ export class WorkflowService {
             const isProcessing = project.scenes.some(s =>
                 s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
                 s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
+                (s as any).video_status === SceneStatus.processing || (s as any).video_status === SceneStatus.loading ||
                 project.bg_music_status === 'loading'
             );
 
@@ -711,10 +744,20 @@ export class WorkflowService {
             return;
         }
 
+        // If no task triggered, but we had a rate limit skip, schedule retry
+        if (rateLimitDelay !== null) {
+            console.log(`[WorkflowService] Scheduling retry in ${rateLimitDelay}ms`);
+            setTimeout(() => {
+                this.dispatchNext(projectId, apiKeys);
+            }, rateLimitDelay + 1000);
+            return;
+        }
+
         // Check completion
         const allScenesDone = project.scenes.every(s =>
             s.image_status === SceneStatus.completed &&
-            s.audio_status === SceneStatus.completed
+            s.audio_status === SceneStatus.completed &&
+            (s as any).video_status === SceneStatus.completed
         );
         const musicDone = !project.include_music || project.bg_music_status === MusicStatus.completed;
 
@@ -728,12 +771,13 @@ export class WorkflowService {
             const isProcessing = project.scenes.some(s =>
                 s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
                 s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
+                (s as any).video_status === SceneStatus.processing || (s as any).video_status === SceneStatus.loading ||
                 project.bg_music_status === 'loading'
             );
 
             if (!isProcessing) {
                 const hasFailures = project.scenes.some(s =>
-                    s.image_status === SceneStatus.failed || s.audio_status === SceneStatus.failed
+                    s.image_status === SceneStatus.failed || s.audio_status === SceneStatus.failed || (s as any).video_status === SceneStatus.failed
                 ) || (project.include_music && project.bg_music_status === MusicStatus.failed);
 
                 if (hasFailures) {
@@ -767,14 +811,18 @@ export class WorkflowService {
                 s.image_status === SceneStatus.processing ||
                 s.image_status === SceneStatus.loading ||
                 s.audio_status === SceneStatus.processing ||
-                s.audio_status === SceneStatus.loading
+                s.audio_status === SceneStatus.loading ||
+                (s as any).video_status === SceneStatus.processing ||
+                (s as any).video_status === SceneStatus.loading
             );
 
             if (processingScene) {
                 if (processingScene.image_status === SceneStatus.processing || processingScene.image_status === SceneStatus.loading) {
                     generationMessage = `Generating Image for Scene ${processingScene.scene_number}...`;
-                } else {
+                } else if (processingScene.audio_status === SceneStatus.processing || processingScene.audio_status === SceneStatus.loading) {
                     generationMessage = `Generating Audio for Scene ${processingScene.scene_number}...`;
+                } else {
+                    generationMessage = `Generating Video for Scene ${processingScene.scene_number}...`;
                 }
             } else if (project.bg_music_status === MusicStatus.loading) {
                 generationMessage = "Generating Background Music...";
@@ -795,7 +843,8 @@ export class WorkflowService {
                 narration: s.narration,
                 wordTimings: s.word_timings,
                 video_status: (s as any).video_status,
-                video_url: (s as any).video_url
+                video_url: (s as any).video_url,
+                media_type: (s as any).media_type
             })),
             music_status: project.bg_music_status,
             music_url: project.bg_music_url,

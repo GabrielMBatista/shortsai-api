@@ -21,6 +21,9 @@ export async function PATCH(
             visual_description,
             narration,
             duration_seconds,
+            video_url,
+            video_status,
+            media_type
         } = body;
 
         // Verify ownership
@@ -43,6 +46,9 @@ export async function PATCH(
                 visual_description,
                 narration,
                 duration_seconds,
+                video_url,
+                video_status,
+                media_type
             },
         });
 

@@ -87,6 +87,7 @@ model User {
   stripe_customer_id String?
   created_at         DateTime         @default(now())
   updated_at         DateTime         @default(now()) @updatedAt
+  last_video_generated_at DateTime?
 
   accounts    Account[]
   sessions    Session[]
@@ -204,6 +205,7 @@ model Scene {
   sfx_status         SceneStatus @default(draft)
   video_url          String?
   video_status       SceneStatus @default(draft)
+  media_type         String      @default("image")
   word_timings       Json?
   error_message      String?
   image_attempts     Int         @default(0)
