@@ -19,7 +19,7 @@ export async function POST(request: Request) {
         const plan = await prisma.plan.create({
             data: {
                 name: body.name,
-                slug: body.slug,
+                slug: body.slug || crypto.randomUUID(),
                 description: body.description,
                 price: body.price,
                 monthly_images_limit: body.monthly_images_limit,
