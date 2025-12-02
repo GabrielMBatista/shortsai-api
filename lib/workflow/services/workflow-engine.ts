@@ -139,7 +139,7 @@ export class WorkflowEngine {
         if (!taskToTrigger) {
             for (const scene of project.scenes) {
                 if (scene.image_status === SceneStatus.queued) {
-                    await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'image', (SceneStatus as any).processing);
+                    await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'image', SceneStatus.processing);
                     taskToTrigger = {
                         id: `task-${scene.id}-image-${Date.now()}`,
                         projectId, sceneId: scene.id, action: 'generate_image',
@@ -149,7 +149,7 @@ export class WorkflowEngine {
                     break;
                 }
                 if (scene.audio_status === SceneStatus.queued) {
-                    await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'audio', (SceneStatus as any).processing);
+                    await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'audio', SceneStatus.processing);
                     taskToTrigger = {
                         id: `task-${scene.id}-audio-${Date.now()}`,
                         projectId, sceneId: scene.id, action: 'generate_audio',
@@ -175,11 +175,17 @@ export class WorkflowEngine {
                         continue;
                     }
 
-                    await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'video', (SceneStatus as any).processing);
+                    await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'video', SceneStatus.processing);
                     taskToTrigger = {
                         id: `task-${scene.id}-video-${Date.now()}`,
                         projectId, sceneId: scene.id, action: 'generate_video',
-                        params: { prompt: scene.visual_description, width: 1080, height: 1920 },
+                        params: {
+                            prompt: scene.visual_description,
+                            width: 1080,
+                            height: 1920,
+                            model: (project as any).video_model || 'veo',
+                            with_audio: false
+                        },
                         status: 'pending', createdAt: new Date(), apiKeys
                     };
                     break;
@@ -190,16 +196,16 @@ export class WorkflowEngine {
         // 2. AUTOMATIC SEQUENCE
         if (!taskToTrigger && project.status === 'generating') {
             const isProcessing = project.scenes.some(s =>
-                s.image_status === (SceneStatus as any).processing || s.image_status === SceneStatus.loading ||
-                s.audio_status === (SceneStatus as any).processing || s.audio_status === SceneStatus.loading ||
-                (s as any).video_status === (SceneStatus as any).processing || (s as any).video_status === SceneStatus.loading ||
+                s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
+                s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
+                (s as any).video_status === SceneStatus.processing || (s as any).video_status === SceneStatus.loading ||
                 project.bg_music_status === 'loading'
             );
 
             if (!isProcessing) {
                 for (const scene of project.scenes) {
                     if (scene.image_status === SceneStatus.pending) {
-                        await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'image', (SceneStatus as any).processing);
+                        await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'image', SceneStatus.processing);
                         taskToTrigger = {
                             id: `task-${scene.id}-image-${Date.now()}`,
                             projectId, sceneId: scene.id, action: 'generate_image',
@@ -209,7 +215,7 @@ export class WorkflowEngine {
                         break;
                     }
                     if (scene.audio_status === SceneStatus.pending) {
-                        await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'audio', (SceneStatus as any).processing);
+                        await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'audio', SceneStatus.processing);
                         taskToTrigger = {
                             id: `task-${scene.id}-audio-${Date.now()}`,
                             projectId, sceneId: scene.id, action: 'generate_audio',
@@ -302,9 +308,9 @@ export class WorkflowEngine {
             await WorkflowStateService.updateProjectStatus(project.id, 'completed');
         } else if (project.status === 'generating') {
             const isProcessing = project.scenes.some((s: any) =>
-                s.image_status === (SceneStatus as any).processing || s.image_status === SceneStatus.loading ||
-                s.audio_status === (SceneStatus as any).processing || s.audio_status === SceneStatus.loading ||
-                s.video_status === (SceneStatus as any).processing || s.video_status === SceneStatus.loading ||
+                s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
+                s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
+                s.video_status === SceneStatus.processing || s.video_status === SceneStatus.loading ||
                 project.bg_music_status === 'loading'
             );
 

@@ -27,7 +27,7 @@ export interface WorkflowCommand {
 }
 
 export type WorkflowTaskParams =
-    | { prompt: string; width: number; height: number }
+    | { prompt: string; width: number; height: number; model?: string; with_audio?: boolean }
     | { text: string; voice: string; provider: string }
     | { prompt: string; duration: number }; // Music params example
 

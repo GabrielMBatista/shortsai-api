@@ -146,13 +146,13 @@ export class WorkflowService {
             where: {
                 project_id: project.id,
                 // @ts-ignore
-                video_status: { in: [(SceneStatus as any).processing, SceneStatus.loading] }
+                video_status: { in: [SceneStatus.processing, SceneStatus.loading] }
             },
             // @ts-ignore
             data: { video_status: SceneStatus.pending }
         });
 
-        if (project.include_music && (project.bg_music_status === (MusicStatus as any).processing || project.bg_music_status === MusicStatus.loading)) {
+        if (project.include_music && (project.bg_music_status === MusicStatus.pending || project.bg_music_status === MusicStatus.loading)) {
             await WorkflowStateService.updateMusicStatus(project.id, MusicStatus.pending);
         }
 
@@ -191,18 +191,18 @@ export class WorkflowService {
         let generationMessage = '';
         if (project.status === 'generating') {
             const processingScene = project.scenes.find(s =>
-                s.image_status === (SceneStatus as any).processing ||
+                s.image_status === SceneStatus.processing ||
                 s.image_status === SceneStatus.loading ||
-                s.audio_status === (SceneStatus as any).processing ||
+                s.audio_status === SceneStatus.processing ||
                 s.audio_status === SceneStatus.loading ||
-                (s as any).video_status === (SceneStatus as any).processing ||
+                (s as any).video_status === SceneStatus.processing ||
                 (s as any).video_status === SceneStatus.loading
             );
 
             if (processingScene) {
-                if (processingScene.image_status === (SceneStatus as any).processing || processingScene.image_status === SceneStatus.loading) {
+                if (processingScene.image_status === SceneStatus.processing || processingScene.image_status === SceneStatus.loading) {
                     generationMessage = `Generating Image for Scene ${processingScene.scene_number}...`;
-                } else if (processingScene.audio_status === (SceneStatus as any).processing || processingScene.audio_status === SceneStatus.loading) {
+                } else if (processingScene.audio_status === SceneStatus.processing || processingScene.audio_status === SceneStatus.loading) {
                     generationMessage = `Generating Audio for Scene ${processingScene.scene_number}...`;
                 } else {
                     generationMessage = `Generating Video for Scene ${processingScene.scene_number}...`;

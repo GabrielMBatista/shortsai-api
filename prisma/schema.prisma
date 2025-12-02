@@ -168,6 +168,7 @@ model Project {
   tts_provider                  TTSProvider
   reference_image_url           String?
   reference_characters_snapshot Json?
+  video_model                   String        @default("veo")
   include_music                 Boolean       @default(false)
   bg_music_prompt               String?
   bg_music_url                  String?

@@ -65,7 +65,7 @@ export class WorkflowStateService {
             await prisma.scene.updateMany({
                 where: {
                     project_id: projectId,
-                    [field]: { in: [SceneStatus.draft, (SceneStatus as any).processing, SceneStatus.loading, SceneStatus.failed] }
+                    [field]: { in: [SceneStatus.draft, SceneStatus.processing, SceneStatus.loading, SceneStatus.failed] }
                 },
                 data: { [field]: SceneStatus.pending }
             });
