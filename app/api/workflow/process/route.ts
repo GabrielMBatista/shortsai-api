@@ -24,6 +24,7 @@ export async function POST(request: Request) {
 
         let outputUrl: string | undefined;
         let timings: any[] | undefined;
+        let duration: number | undefined;
 
         try {
             switch (task.action) {
@@ -48,6 +49,7 @@ export async function POST(request: Request) {
                         );
                         outputUrl = result.url;
                         timings = result.timings;
+                        duration = result.duration;
                     }
                     break;
                 case 'generate_music':
@@ -87,7 +89,8 @@ export async function POST(request: Request) {
                 outputUrl,
                 undefined,
                 task.apiKeys,
-                timings
+                timings,
+                duration
             );
 
             return NextResponse.json({ success: true, url: outputUrl });
