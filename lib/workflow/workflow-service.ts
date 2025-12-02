@@ -1,62 +1,10 @@
 import { prisma } from '../prisma';
 import { Project, Scene, SceneStatus, MusicStatus } from '@prisma/client';
-import { broadcastProjectUpdate } from '@/lib/sse/sse-service';
+import { WorkflowStateService } from './services/workflow-state';
+import { WorkflowEngine } from './services/workflow-engine';
+import { WorkflowCommand, WorkflowTask } from './types';
 
-export type WorkflowAction =
-    | 'generate_all'
-    | 'generate_image'
-    | 'generate_all_images'
-    | 'regenerate_image'
-    | 'generate_audio'
-    | 'generate_all_audio'
-    | 'regenerate_audio'
-    | 'generate_music'
-    | 'generate_video'
-    | 'regenerate_video'
-    | 'cancel'
-    | 'pause'
-    | 'resume'
-    | 'skip_scene';
-
-export interface WorkflowCommand {
-    projectId: string;
-    sceneId?: string;
-    action: WorkflowAction;
-    force?: boolean;
-    apiKeys?: {
-        gemini?: string;
-        elevenlabs?: string;
-        suno?: string;
-    };
-}
-
-export type WorkflowTaskParams =
-    | { prompt: string; width: number; height: number }
-    | { text: string; voice: string; provider: string }
-    | { prompt: string; duration: number }; // Music params example
-
-export interface WorkflowTask {
-    id: string; // Unique task ID
-    projectId: string;
-    sceneId?: string;
-    action: 'generate_image' | 'generate_audio' | 'generate_music' | 'generate_video';
-    params: WorkflowTaskParams;
-    status: 'pending' | 'dispatched' | 'completed' | 'failed';
-    createdAt: Date;
-    apiKeys?: {
-        gemini?: string;
-        elevenlabs?: string;
-        suno?: string;
-    };
-}
-
-// In-memory task queue (for MVP/Vercel serverless limitations, this resets on cold start)
-// In production, use Redis or Database. We will use Database for persistence.
-// We'll add a 'Task' model to Prisma or just manage it via Scene status + polling.
-// Given the constraints, we'll use a simple in-memory queue backed by DB status checks.
-// Actually, user requested "Criar fila de tarefas". Let's use a simple array for now but
-// rely on DB state to reconstruct it if needed.
-// Better yet, let's make it stateless: PollTasks checks DB for "queued" items and returns them as tasks.
+export * from './types';
 
 export class WorkflowService {
 
@@ -106,42 +54,16 @@ export class WorkflowService {
     }
 
     private static async startGeneration(project: Project & { scenes: Scene[] }, force?: boolean, apiKeys?: any) {
-        // If force, reset all to pending
+        // Reset statuses
         if (force) {
-            await prisma.scene.updateMany({
-                where: { project_id: project.id },
-                data: {
-                    image_status: SceneStatus.pending,
-                    audio_status: SceneStatus.pending,
-                    image_attempts: 0,
-                    audio_attempts: 0,
-                    error_message: null
-                }
-            });
-
+            await WorkflowStateService.resetSceneStatus(project.id, 'image', true);
+            await WorkflowStateService.resetSceneStatus(project.id, 'audio', true);
             if (project.include_music) {
-                await prisma.project.update({
-                    where: { id: project.id },
-                    data: { bg_music_status: MusicStatus.pending }
-                });
+                await WorkflowStateService.updateMusicStatus(project.id, MusicStatus.pending);
             }
         } else {
-            // If not forced, reset DRAFT, PROCESSING, LOADING, and FAILED items to pending
-            // This ensures we unblock stuck tasks and retry failures
-            await prisma.scene.updateMany({
-                where: {
-                    project_id: project.id,
-                    image_status: { in: [SceneStatus.draft, SceneStatus.processing, SceneStatus.loading, SceneStatus.failed] }
-                },
-                data: { image_status: SceneStatus.pending }
-            });
-            await prisma.scene.updateMany({
-                where: {
-                    project_id: project.id,
-                    audio_status: { in: [SceneStatus.draft, SceneStatus.processing, SceneStatus.loading, SceneStatus.failed] }
-                },
-                data: { audio_status: SceneStatus.pending }
-            });
+            await WorkflowStateService.resetSceneStatus(project.id, 'image', false);
+            await WorkflowStateService.resetSceneStatus(project.id, 'audio', false);
 
             if (project.include_music && (
                 project.bg_music_status === MusicStatus.draft ||
@@ -149,331 +71,93 @@ export class WorkflowService {
                 project.bg_music_status === MusicStatus.loading ||
                 project.bg_music_status === MusicStatus.failed
             )) {
-                await prisma.project.update({
-                    where: { id: project.id },
-                    data: { bg_music_status: MusicStatus.pending }
-                });
+                await WorkflowStateService.updateMusicStatus(project.id, MusicStatus.pending);
             }
         }
 
-        await prisma.project.update({
-            where: { id: project.id },
-            data: { status: 'generating' }
-        });
-        broadcastProjectUpdate(project.id, { type: 'project_status_update', status: 'generating' });
+        await WorkflowStateService.updateProjectStatus(project.id, 'generating');
 
-        // Re-fetch project to get updated scene statuses for broadcast
-        const updatedProject = await prisma.project.findUnique({
-            where: { id: project.id },
-            include: { scenes: { orderBy: { scene_number: 'asc' } } }
-        });
-
-        if (updatedProject) {
-            const broadcastPayload = {
-                type: 'init',
-                projectStatus: updatedProject.status,
-                scenes: updatedProject.scenes.map(s => ({
-                    id: s.id,
-                    sceneNumber: s.scene_number,
-                    imageStatus: s.image_status,
-                    audioStatus: s.audio_status,
-                    imageUrl: s.image_url,
-                    audioUrl: s.audio_url,
-                    errorMessage: s.error_message,
-                    visualDescription: s.visual_description,
-                    narration: s.narration,
-                    durationSeconds: s.duration_seconds,
-                    videoStatus: (s as any).video_status,
-                    videoUrl: (s as any).video_url,
-                    mediaType: (s as any).media_type
-                })),
-                bgMusicStatus: updatedProject.bg_music_status,
-                bgMusicUrl: updatedProject.bg_music_url
-            };
-            broadcastProjectUpdate(project.id, broadcastPayload);
-        }
+        // Broadcast full state
+        await WorkflowStateService.broadcastFullState(project.id);
 
         // Trigger the first available task
-        await this.dispatchNext(project.id, apiKeys);
+        await WorkflowEngine.dispatchNext(project.id, apiKeys);
 
         return { message: 'Generation started' };
     }
 
     private static async generateAllImages(project: Project, force?: boolean, apiKeys?: any) {
-        if (force) {
-            await prisma.scene.updateMany({
-                where: { project_id: project.id },
-                data: {
-                    image_status: SceneStatus.pending,
-                    image_attempts: 0,
-                    error_message: null
-                }
-            });
-        } else {
-            await prisma.scene.updateMany({
-                where: {
-                    project_id: project.id,
-                    image_status: { in: [SceneStatus.draft, SceneStatus.processing, SceneStatus.loading, SceneStatus.failed] }
-                },
-                data: { image_status: SceneStatus.pending }
-            });
-        }
-
-        await prisma.project.update({
-            where: { id: project.id },
-            data: { status: 'generating' }
-        });
-        broadcastProjectUpdate(project.id, { type: 'project_status_update', status: 'generating' });
-
-        const updatedProject = await prisma.project.findUnique({
-            where: { id: project.id },
-            include: { scenes: { orderBy: { scene_number: 'asc' } } }
-        });
-
-        if (updatedProject) {
-            const broadcastPayload = {
-                type: 'init',
-                projectStatus: updatedProject.status,
-                scenes: updatedProject.scenes.map(s => ({
-                    id: s.id,
-                    sceneNumber: s.scene_number,
-                    imageStatus: s.image_status,
-                    audioStatus: s.audio_status,
-                    imageUrl: s.image_url,
-                    audioUrl: s.audio_url,
-                    errorMessage: s.error_message,
-                    visualDescription: s.visual_description,
-                    narration: s.narration,
-                    durationSeconds: s.duration_seconds,
-                    videoStatus: (s as any).video_status,
-                    videoUrl: (s as any).video_url,
-                    mediaType: (s as any).media_type
-                })),
-                bgMusicStatus: updatedProject.bg_music_status,
-                bgMusicUrl: updatedProject.bg_music_url
-            };
-            broadcastProjectUpdate(project.id, broadcastPayload);
-        }
-
-        await this.dispatchNext(project.id, apiKeys);
+        await WorkflowStateService.resetSceneStatus(project.id, 'image', !!force);
+        await WorkflowStateService.updateProjectStatus(project.id, 'generating');
+        await WorkflowStateService.broadcastFullState(project.id);
+        await WorkflowEngine.dispatchNext(project.id, apiKeys);
         return { message: 'Image generation started' };
     }
 
     private static async generateAllAudio(project: Project, force?: boolean, apiKeys?: any) {
-        if (force) {
-            await prisma.scene.updateMany({
-                where: { project_id: project.id },
-                data: {
-                    audio_status: SceneStatus.pending,
-                    audio_attempts: 0,
-                    error_message: null
-                }
-            });
-        } else {
-            await prisma.scene.updateMany({
-                where: {
-                    project_id: project.id,
-                    audio_status: { in: [SceneStatus.draft, SceneStatus.processing, SceneStatus.loading, SceneStatus.failed] }
-                },
-                data: { audio_status: SceneStatus.pending }
-            });
-        }
-
-        await prisma.project.update({
-            where: { id: project.id },
-            data: { status: 'generating' }
-        });
-        broadcastProjectUpdate(project.id, { type: 'project_status_update', status: 'generating' });
-
-        const updatedProject = await prisma.project.findUnique({
-            where: { id: project.id },
-            include: { scenes: { orderBy: { scene_number: 'asc' } } }
-        });
-
-        if (updatedProject) {
-            const broadcastPayload = {
-                type: 'init',
-                projectStatus: updatedProject.status,
-                scenes: updatedProject.scenes.map(s => ({
-                    id: s.id,
-                    sceneNumber: s.scene_number,
-                    imageStatus: s.image_status,
-                    audioStatus: s.audio_status,
-                    imageUrl: s.image_url,
-                    audioUrl: s.audio_url,
-                    errorMessage: s.error_message,
-                    visualDescription: s.visual_description,
-                    narration: s.narration,
-                    durationSeconds: s.duration_seconds,
-                    videoStatus: (s as any).video_status,
-                    videoUrl: (s as any).video_url,
-                    mediaType: (s as any).media_type
-                })),
-                bgMusicStatus: updatedProject.bg_music_status,
-                bgMusicUrl: updatedProject.bg_music_url
-            };
-            broadcastProjectUpdate(project.id, broadcastPayload);
-        }
-
-        await this.dispatchNext(project.id, apiKeys);
+        await WorkflowStateService.resetSceneStatus(project.id, 'audio', !!force);
+        await WorkflowStateService.updateProjectStatus(project.id, 'generating');
+        await WorkflowStateService.broadcastFullState(project.id);
+        await WorkflowEngine.dispatchNext(project.id, apiKeys);
         return { message: 'Audio generation started' };
     }
 
     private static async queueSceneAsset(projectId: string, sceneId: string, type: 'image' | 'audio' | 'video', force?: boolean, apiKeys?: any) {
-        const field = `${type}_status` as keyof Scene;
-        const attemptsField = `${type}_attempts` as keyof Scene;
+        await WorkflowStateService.updateSceneStatus(projectId, sceneId, type, SceneStatus.queued);
 
-        await prisma.scene.update({
-            where: { id: sceneId },
-            data: {
-                [field]: SceneStatus.queued,
-                [attemptsField]: force ? 0 : undefined
-            }
-        });
-        broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId, field: type, status: 'queued' });
+        // Reset attempts if forced
+        if (force) {
+            await prisma.scene.update({
+                where: { id: sceneId },
+                data: { [`${type}_attempts`]: 0 }
+            });
+        }
 
         // Trigger immediately
-        await this.dispatchNext(projectId, apiKeys);
+        await WorkflowEngine.dispatchNext(projectId, apiKeys);
 
         return { message: `${type} queued` };
     }
 
     private static async queueMusic(projectId: string, force?: boolean, apiKeys?: any) {
-        await prisma.project.update({
-            where: { id: projectId },
-            data: {
-                bg_music_status: MusicStatus.queued
-            }
-        });
-        broadcastProjectUpdate(projectId, { type: 'music_update', status: 'queued' });
-
-        await this.dispatchNext(projectId, apiKeys);
+        await WorkflowStateService.updateMusicStatus(projectId, MusicStatus.queued);
+        await WorkflowEngine.dispatchNext(projectId, apiKeys);
         return { message: 'Music queued' };
     }
 
     private static async cancelGeneration(projectId: string) {
-        // Update project status to failed
-        await prisma.project.update({
-            where: { id: projectId },
-            data: { status: 'failed' }
-        });
-
-        // Iterate and fail specific scenes to stop spinners
-        const project = await prisma.project.findUnique({
-            where: { id: projectId },
-            include: { scenes: true }
-        });
-
-        if (project) {
-            for (const scene of project.scenes) {
-                let updated = false;
-                const data: any = {};
-                if (['processing', 'loading', 'queued', 'pending'].includes(scene.image_status)) {
-                    data.image_status = SceneStatus.failed;
-                    updated = true;
-                }
-                if (['processing', 'loading', 'queued', 'pending'].includes(scene.audio_status)) {
-                    data.audio_status = SceneStatus.failed;
-                    updated = true;
-                }
-                if (['processing', 'loading', 'queued', 'pending'].includes((scene as any).video_status)) {
-                    data.video_status = SceneStatus.failed;
-                    updated = true;
-                }
-                if (updated) {
-                    await prisma.scene.update({ where: { id: scene.id }, data });
-                }
-            }
-            if (['processing', 'loading', 'queued', 'pending'].includes(project.bg_music_status || '')) {
-                await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: MusicStatus.failed } });
-            }
-        }
-
-        broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'failed' });
-
-        // Send full state update to ensure frontend sync
-        const updatedProject = await prisma.project.findUnique({
-            where: { id: projectId },
-            include: { scenes: { orderBy: { scene_number: 'asc' } } }
-        });
-        if (updatedProject) {
-            const broadcastPayload = {
-                type: 'init',
-                projectStatus: updatedProject.status,
-                scenes: updatedProject.scenes.map(s => ({
-                    id: s.id,
-                    sceneNumber: s.scene_number,
-                    imageStatus: s.image_status,
-                    audioStatus: s.audio_status,
-                    imageUrl: s.image_url,
-                    audioUrl: s.audio_url,
-                    errorMessage: s.error_message,
-                    visualDescription: s.visual_description,
-                    narration: s.narration,
-                    durationSeconds: s.duration_seconds,
-                    videoStatus: (s as any).video_status,
-                    videoUrl: (s as any).video_url,
-                    mediaType: (s as any).media_type
-                })),
-                bgMusicStatus: updatedProject.bg_music_status,
-                bgMusicUrl: updatedProject.bg_music_url
-            };
-            broadcastProjectUpdate(projectId, broadcastPayload);
-        }
-
+        await WorkflowStateService.updateProjectStatus(projectId, 'failed');
+        await WorkflowStateService.failAllPending(projectId);
+        await WorkflowStateService.broadcastFullState(projectId);
         return { message: 'Generation cancelled' };
     }
 
     private static async pauseGeneration(projectId: string) {
-        await prisma.project.update({
-            where: { id: projectId },
-            data: { status: 'paused' }
-        });
-        broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'paused' });
+        await WorkflowStateService.updateProjectStatus(projectId, 'paused');
         return { message: 'Generation paused' };
     }
 
     private static async resumeGeneration(project: any) {
-        // Reset stuck tasks (processing/loading) to pending so they are picked up again
-        await prisma.scene.updateMany({
-            where: {
-                project_id: project.id,
-                image_status: { in: [SceneStatus.processing, SceneStatus.loading] }
-            },
-            data: { image_status: SceneStatus.pending }
-        });
-        await prisma.scene.updateMany({
-            where: {
-                project_id: project.id,
-                audio_status: { in: [SceneStatus.processing, SceneStatus.loading] }
-            },
-            data: { audio_status: SceneStatus.pending }
-        });
+        // Reset stuck tasks
+        await WorkflowStateService.resetSceneStatus(project.id, 'image', false);
+        await WorkflowStateService.resetSceneStatus(project.id, 'audio', false);
+        // Video reset logic (custom since resetSceneStatus is generic)
         await prisma.scene.updateMany({
             where: {
                 project_id: project.id,
                 // @ts-ignore
-                video_status: { in: [SceneStatus.processing, SceneStatus.loading] }
+                video_status: { in: [(SceneStatus as any).processing, SceneStatus.loading] }
             },
             // @ts-ignore
             data: { video_status: SceneStatus.pending }
         });
 
-        if (project.include_music && (project.bg_music_status === MusicStatus.processing || project.bg_music_status === MusicStatus.loading)) {
-            await prisma.project.update({
-                where: { id: project.id },
-                data: { bg_music_status: MusicStatus.pending }
-            });
+        if (project.include_music && (project.bg_music_status === (MusicStatus as any).processing || project.bg_music_status === MusicStatus.loading)) {
+            await WorkflowStateService.updateMusicStatus(project.id, MusicStatus.pending);
         }
 
-        await prisma.project.update({
-            where: { id: project.id },
-            data: { status: 'generating' }
-        });
-        broadcastProjectUpdate(project.id, { type: 'project_status_update', status: 'generating' });
-
-        // Kickstart queue
-        await this.dispatchNext(project.id);
+        await WorkflowStateService.updateProjectStatus(project.id, 'generating');
+        await WorkflowEngine.dispatchNext(project.id);
         return { message: 'Generation resumed' };
     }
 
@@ -487,384 +171,38 @@ export class WorkflowService {
             }
         });
 
-        // Try to move to next
-        await this.dispatchNext(scene.project_id);
-
+        await WorkflowEngine.dispatchNext(scene.project_id);
         return { message: 'Scene skipped' };
     }
 
-    // --- Task Polling Logic ---
-
-    // --- Task Polling Logic ---
-
     static async getNextTask(projectId: string): Promise<WorkflowTask | null> {
-        // This method is legacy/polling based. dispatchNext handles the push.
+        // Legacy/polling based. dispatchNext handles the push.
         return null;
     }
 
     static async completeTask(projectId: string, sceneId: string | undefined, type: 'image' | 'audio' | 'music' | 'video', status: 'completed' | 'failed', outputUrl?: string, error?: string, apiKeys?: any, timings?: any[], duration?: number) {
-        if (type === 'audio') {
-            console.log(`[WorkflowService] Completing audio task for scene ${sceneId}. Duration: ${duration}`);
-        }
-
-        if (type === 'music') {
-            if (status === 'completed') {
-                await prisma.project.update({
-                    where: { id: projectId },
-                    data: { bg_music_status: MusicStatus.completed, bg_music_url: outputUrl }
-                });
-                broadcastProjectUpdate(projectId, { type: 'music_update', status: 'completed', url: outputUrl });
-            } else {
-                await prisma.project.update({
-                    where: { id: projectId },
-                    data: { bg_music_status: MusicStatus.failed } // No retry logic for music yet
-                });
-            }
-            await this.dispatchNext(projectId, apiKeys);
-            return;
-        }
-
-        if (!sceneId) return; // Should not happen for image/audio
-
-        const fieldStatus = `${type}_status`;
-        const fieldUrl = `${type}_url`;
-        const fieldAttempts = `${type}_attempts`;
-
-        if (status === 'completed') {
-            await prisma.scene.update({
-                where: { id: sceneId },
-                data: {
-                    [fieldStatus]: SceneStatus.completed,
-                    [fieldUrl]: outputUrl,
-                    word_timings: timings || undefined,
-                    duration_seconds: (typeof duration === 'number') ? duration : undefined,
-                    error_message: null
-                }
-            });
-
-            // Update user last_video_generated_at if it was a video task
-            if (type === 'video') {
-                const project = await prisma.project.findUnique({ where: { id: projectId }, select: { user_id: true } });
-                if (project) {
-                    await prisma.user.update({
-                        where: { id: project.user_id },
-                        data: { last_video_generated_at: new Date() } as any
-                    });
-                }
-            }
-
-            // Broadcast update via SSE
-            broadcastProjectUpdate(projectId, {
-                type: 'scene_update',
-                sceneId,
-                field: type,
-                status: 'completed',
-                url: outputUrl,
-                timings: timings,
-                duration: (typeof duration === 'number') ? duration : undefined
-            });
-
-            // Trigger next step in sequence
-            await this.dispatchNext(projectId, apiKeys);
-
-        } else {
-            // Handle failure & Retry logic
-            const scene = await prisma.scene.findUnique({ where: { id: sceneId } });
-            if (!scene) return;
-
-            const attempts = (scene as any)[fieldAttempts] + 1;
-            const maxAttempts = 2;
-
-            let newStatus: SceneStatus = SceneStatus.queued; // Retry by default
-
-            // Check for fatal errors that should NOT be retried
-            const isFatalError = error && (
-                error.includes("API Key missing") ||
-                error.includes("Rate limit exceeded") || // Optional: maybe retry rate limits with longer backoff? For now fail to stop loop.
-                error.includes("Quota hit") ||
-                error.includes("Model Refusal")
-            );
-
-            if (attempts >= maxAttempts || isFatalError) {
-                newStatus = SceneStatus.failed; // Give up
-            }
-
-            await prisma.scene.update({
-                where: { id: sceneId },
-                data: {
-                    [fieldStatus]: newStatus,
-                    [fieldAttempts]: attempts,
-                    error_message: error
-                }
-            });
-
-            if (newStatus === SceneStatus.failed) {
-                await prisma.project.update({
-                    where: { id: projectId },
-                    data: { status: 'failed' }
-                });
-                broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'failed' });
-            } else {
-                // If retrying, trigger immediately
-                await this.dispatchNext(projectId, apiKeys);
-            }
-        }
-    }
-
-    // Smart Dispatcher: Enforces Sequence & Triggers Worker
-    private static async dispatchNext(projectId: string, apiKeys?: any) {
-        const project = await prisma.project.findUnique({
-            where: { id: projectId },
-            include: { scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } } }
-        });
-
-        if (!project) return;
-
-        let taskToTrigger: WorkflowTask | null = null;
-        let rateLimitDelay: number | null = null;
-
-        // 1. PRIORITY: Check for QUEUED items (Manual Overrides or Retries)
-        // Check Music Queue
-        if (project.bg_music_status === MusicStatus.queued) {
-            await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: MusicStatus.loading } });
-            broadcastProjectUpdate(projectId, { type: 'music_update', status: 'loading' });
-            taskToTrigger = {
-                id: `task-${projectId}-music-${Date.now()}`,
-                projectId,
-                action: 'generate_music',
-                params: { prompt: project.bg_music_prompt || "instrumental", duration: 30 },
-                status: 'pending',
-                createdAt: new Date(),
-                apiKeys
-            };
-        }
-
-        if (!taskToTrigger) {
-            for (const scene of project.scenes) {
-                if (scene.image_status === SceneStatus.queued) {
-                    await prisma.scene.update({ where: { id: scene.id }, data: { image_status: SceneStatus.processing } });
-                    broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'image', status: 'processing' });
-                    taskToTrigger = {
-                        id: `task-${scene.id}-image-${Date.now()}`,
-                        projectId, sceneId: scene.id, action: 'generate_image',
-                        params: { prompt: scene.visual_description, width: 1080, height: 1920 },
-                        status: 'pending', createdAt: new Date(), apiKeys
-                    };
-                    break;
-                }
-                if (scene.audio_status === SceneStatus.queued) {
-                    await prisma.scene.update({ where: { id: scene.id }, data: { audio_status: SceneStatus.processing } });
-                    broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'audio', status: 'processing' });
-                    taskToTrigger = {
-                        id: `task-${scene.id}-audio-${Date.now()}`,
-                        projectId, sceneId: scene.id, action: 'generate_audio',
-                        params: { text: scene.narration, voice: project.voice_name, provider: project.tts_provider },
-                        status: 'pending', createdAt: new Date(), apiKeys
-                    };
-                    break;
-                }
-                if ((scene as any).video_status === SceneStatus.queued) {
-                    // Check rate limit
-                    const user = await prisma.user.findUnique({ where: { id: project.user_id } });
-                    const lastGenerated = (user as any)?.last_video_generated_at;
-                    const now = new Date();
-                    const timeSinceLast = lastGenerated ? now.getTime() - lastGenerated.getTime() : Infinity;
-                    const DELAY_MS = 40000; // 40 seconds
-
-                    if (timeSinceLast < DELAY_MS) {
-                        const waitTime = DELAY_MS - timeSinceLast;
-                        console.log(`[WorkflowService] Rate limit hit for user ${project.user_id}. Waiting ${waitTime}ms`);
-                        if (rateLimitDelay === null || waitTime < rateLimitDelay) {
-                            rateLimitDelay = waitTime;
-                        }
-                        continue; // Skip this video, look for others
-                    }
-
-                    await prisma.scene.update({ where: { id: scene.id }, data: { video_status: SceneStatus.processing } as any });
-                    broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'video', status: 'processing' });
-                    taskToTrigger = {
-                        id: `task-${scene.id}-video-${Date.now()}`,
-                        projectId, sceneId: scene.id, action: 'generate_video',
-                        params: { prompt: scene.visual_description, width: 1080, height: 1920 },
-                        status: 'pending', createdAt: new Date(), apiKeys
-                    };
-                    break;
-                }
-            }
-        }
-
-        // 2. AUTOMATIC SEQUENCE: If no manual tasks, find next PENDING
-        if (!taskToTrigger && project.status === 'generating') {
-            const isProcessing = project.scenes.some(s =>
-                s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
-                s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
-                (s as any).video_status === SceneStatus.processing || (s as any).video_status === SceneStatus.loading ||
-                project.bg_music_status === 'loading'
-            );
-
-            if (!isProcessing) {
-                for (const scene of project.scenes) {
-                    if (scene.image_status === SceneStatus.pending) {
-                        await prisma.scene.update({ where: { id: scene.id }, data: { image_status: SceneStatus.processing } });
-                        broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'image', status: 'processing' });
-                        taskToTrigger = {
-                            id: `task-${scene.id}-image-${Date.now()}`,
-                            projectId, sceneId: scene.id, action: 'generate_image',
-                            params: { prompt: scene.visual_description, width: 1080, height: 1920 },
-                            status: 'pending', createdAt: new Date(), apiKeys
-                        };
-                        break;
-                    }
-                    if (scene.audio_status === SceneStatus.pending) {
-                        await prisma.scene.update({ where: { id: scene.id }, data: { audio_status: SceneStatus.processing } });
-                        broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId: scene.id, field: 'audio', status: 'processing' });
-                        taskToTrigger = {
-                            id: `task-${scene.id}-audio-${Date.now()}`,
-                            projectId, sceneId: scene.id, action: 'generate_audio',
-                            params: { text: scene.narration, voice: project.voice_name, provider: project.tts_provider },
-                            status: 'pending', createdAt: new Date(), apiKeys
-                        };
-                        break;
-                    }
-                }
-
-                if (!taskToTrigger && project.include_music && project.bg_music_status === MusicStatus.pending) {
-                    await prisma.project.update({ where: { id: projectId }, data: { bg_music_status: MusicStatus.loading } });
-                    broadcastProjectUpdate(projectId, { type: 'music_update', status: 'loading' });
-                    taskToTrigger = {
-                        id: `task-${projectId}-music-${Date.now()}`,
-                        projectId,
-                        action: 'generate_music',
-                        params: { prompt: project.bg_music_prompt || "instrumental", duration: 30 },
-                        status: 'pending',
-                        createdAt: new Date(),
-                        apiKeys
-                    };
-                }
-            }
-        }
-
-        if (taskToTrigger) {
-            const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3333';
-            console.log(`[WorkflowService] Triggering worker for task ${taskToTrigger.id} at ${baseUrl}`);
-
-            fetch(`${baseUrl}/api/workflow/process`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(taskToTrigger)
-            })
-                .then(async (res) => {
-                    if (!res.ok) {
-                        const errorText = await res.text();
-                        console.error(`[WorkflowService] Worker failed for task ${taskToTrigger!.id}: ${res.status} ${errorText}`);
-
-                        // Map action to type
-                        let type = taskToTrigger!.action.replace('generate_', '').replace('regenerate_', '') as 'image' | 'audio' | 'music' | 'video';
-                        // Handle 'all_images' or 'all_audio' edge cases if any (though dispatchNext creates specific tasks)
-                        // The tasks created in dispatchNext are specific: generate_image, generate_audio, generate_video, generate_music.
-
-                        await WorkflowService.completeTask(
-                            taskToTrigger!.projectId,
-                            taskToTrigger!.sceneId,
-                            type,
-                            'failed',
-                            undefined,
-                            `Worker Error: ${errorText}`
-                        );
-                    }
-                })
-                .catch(async (err) => {
-                    console.error('[WorkflowService] Failed to trigger worker:', err);
-                    let type = taskToTrigger!.action.replace('generate_', '').replace('regenerate_', '') as 'image' | 'audio' | 'music' | 'video';
-                    await WorkflowService.completeTask(
-                        taskToTrigger!.projectId,
-                        taskToTrigger!.sceneId,
-                        type,
-                        'failed',
-                        undefined,
-                        `Trigger Error: ${err.message}`
-                    );
-                });
-
-            return;
-        }
-
-        // If no task triggered, but we had a rate limit skip, schedule retry
-        if (rateLimitDelay !== null) {
-            console.log(`[WorkflowService] Scheduling retry in ${rateLimitDelay}ms`);
-            setTimeout(() => {
-                this.dispatchNext(projectId, apiKeys);
-            }, rateLimitDelay + 1000);
-            return;
-        }
-
-        // Check completion
-        const allScenesDone = project.scenes.every(s =>
-            s.image_status === SceneStatus.completed &&
-            s.audio_status === SceneStatus.completed &&
-            (s as any).video_status === SceneStatus.completed
-        );
-        const musicDone = !project.include_music || project.bg_music_status === MusicStatus.completed;
-
-        if (allScenesDone && musicDone) {
-            await prisma.project.update({
-                where: { id: projectId },
-                data: { status: 'completed' }
-            });
-            broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'completed' });
-        } else if (project.status === 'generating') {
-            const isProcessing = project.scenes.some(s =>
-                s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
-                s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
-                (s as any).video_status === SceneStatus.processing || (s as any).video_status === SceneStatus.loading ||
-                project.bg_music_status === 'loading'
-            );
-
-            if (!isProcessing) {
-                const hasFailures = project.scenes.some(s =>
-                    s.image_status === SceneStatus.failed || s.audio_status === SceneStatus.failed || (s as any).video_status === SceneStatus.failed
-                ) || (project.include_music && project.bg_music_status === MusicStatus.failed);
-
-                if (hasFailures) {
-                    await prisma.project.update({
-                        where: { id: projectId },
-                        data: { status: 'failed' }
-                    });
-                    broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'failed' });
-                } else {
-                    await prisma.project.update({
-                        where: { id: projectId },
-                        data: { status: 'completed' }
-                    });
-                    broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'completed' });
-                }
-            }
-        }
+        return WorkflowEngine.completeTask(projectId, sceneId, type, status, outputUrl, error, apiKeys, timings, duration);
     }
 
     static async getState(projectId: string) {
-        const project = await prisma.project.findUnique({
-            where: { id: projectId },
-            include: { scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } } }
-        });
-
+        const project = await WorkflowStateService.getProjectWithScenes(projectId);
         if (!project) return null;
 
         let generationMessage = '';
         if (project.status === 'generating') {
             const processingScene = project.scenes.find(s =>
-                s.image_status === SceneStatus.processing ||
+                s.image_status === (SceneStatus as any).processing ||
                 s.image_status === SceneStatus.loading ||
-                s.audio_status === SceneStatus.processing ||
+                s.audio_status === (SceneStatus as any).processing ||
                 s.audio_status === SceneStatus.loading ||
-                (s as any).video_status === SceneStatus.processing ||
+                (s as any).video_status === (SceneStatus as any).processing ||
                 (s as any).video_status === SceneStatus.loading
             );
 
             if (processingScene) {
-                if (processingScene.image_status === SceneStatus.processing || processingScene.image_status === SceneStatus.loading) {
+                if (processingScene.image_status === (SceneStatus as any).processing || processingScene.image_status === SceneStatus.loading) {
                     generationMessage = `Generating Image for Scene ${processingScene.scene_number}...`;
-                } else if (processingScene.audio_status === SceneStatus.processing || processingScene.audio_status === SceneStatus.loading) {
+                } else if (processingScene.audio_status === (SceneStatus as any).processing || processingScene.audio_status === SceneStatus.loading) {
                     generationMessage = `Generating Audio for Scene ${processingScene.scene_number}...`;
                 } else {
                     generationMessage = `Generating Video for Scene ${processingScene.scene_number}...`;
