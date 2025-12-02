@@ -358,31 +358,7 @@ export class WorkflowService {
             data: { status: 'failed' }
         });
 
-        // Also mark any processing/loading/queued/pending scenes as failed so they stop spinning
-        await prisma.scene.updateMany({
-            where: {
-                project_id: projectId,
-                OR: [
-                    { image_status: { in: [SceneStatus.processing, SceneStatus.loading, SceneStatus.queued, SceneStatus.pending] } },
-                    { audio_status: { in: [SceneStatus.processing, SceneStatus.loading, SceneStatus.queued, SceneStatus.pending] } }
-                ]
-            },
-            data: {
-                // We can't easily update both fields conditionally in one query without raw SQL or multiple queries.
-                // For simplicity, let's just set the project to failed and let the user retry.
-                // But to stop spinners, we need to update the specific status fields.
-                // Let's use updateMany for each status type if needed, or just rely on the project status?
-                // The frontend checks scene status for spinners.
-                // So we MUST update scene statuses.
-            }
-        });
-
-        // Since we can't conditionally update fields in updateMany easily (e.g. set image_status=failed ONLY if it was processing),
-        // we might need to iterate or use raw query.
-        // For now, let's just broadcast the project failure. The frontend SHOULD stop spinners if project is failed?
-        // If the frontend logic is `isImageLoading = ...`, it depends on scene status.
-        // Let's explicitly fail the active tasks.
-
+        // Iterate and fail specific scenes to stop spinners
         const project = await prisma.project.findUnique({
             where: { id: projectId },
             include: { scenes: true }
@@ -400,6 +376,10 @@ export class WorkflowService {
                     data.audio_status = SceneStatus.failed;
                     updated = true;
                 }
+                if (['processing', 'loading', 'queued', 'pending'].includes((scene as any).video_status)) {
+                    data.video_status = SceneStatus.failed;
+                    updated = true;
+                }
                 if (updated) {
                     await prisma.scene.update({ where: { id: scene.id }, data });
                 }
@@ -410,9 +390,8 @@ export class WorkflowService {
         }
 
         broadcastProjectUpdate(projectId, { type: 'project_status_update', status: 'failed' });
-        // We should also broadcast scene updates so individual spinners stop immediately
-        // But a full state refresh or project status update might be enough if frontend handles it.
-        // Let's send a full init/state update to be sure.
+
+        // Send full state update to ensure frontend sync
         const updatedProject = await prisma.project.findUnique({
             where: { id: projectId },
             include: { scenes: { orderBy: { scene_number: 'asc' } } }
@@ -445,8 +424,6 @@ export class WorkflowService {
         return { message: 'Generation cancelled' };
     }
 
-
-
     private static async pauseGeneration(projectId: string) {
         await prisma.project.update({
             where: { id: projectId },
@@ -457,11 +434,44 @@ export class WorkflowService {
     }
 
     private static async resumeGeneration(project: any) {
+        // Reset stuck tasks (processing/loading) to pending so they are picked up again
+        await prisma.scene.updateMany({
+            where: {
+                project_id: project.id,
+                image_status: { in: [SceneStatus.processing, SceneStatus.loading] }
+            },
+            data: { image_status: SceneStatus.pending }
+        });
+        await prisma.scene.updateMany({
+            where: {
+                project_id: project.id,
+                audio_status: { in: [SceneStatus.processing, SceneStatus.loading] }
+            },
+            data: { audio_status: SceneStatus.pending }
+        });
+        await prisma.scene.updateMany({
+            where: {
+                project_id: project.id,
+                // @ts-ignore
+                video_status: { in: [SceneStatus.processing, SceneStatus.loading] }
+            },
+            // @ts-ignore
+            data: { video_status: SceneStatus.pending }
+        });
+
+        if (project.include_music && (project.bg_music_status === MusicStatus.processing || project.bg_music_status === MusicStatus.loading)) {
+            await prisma.project.update({
+                where: { id: project.id },
+                data: { bg_music_status: MusicStatus.pending }
+            });
+        }
+
         await prisma.project.update({
             where: { id: project.id },
             data: { status: 'generating' }
         });
         broadcastProjectUpdate(project.id, { type: 'project_status_update', status: 'generating' });
+
         // Kickstart queue
         await this.dispatchNext(project.id);
         return { message: 'Generation resumed' };
@@ -742,7 +752,39 @@ export class WorkflowService {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(taskToTrigger)
-            }).catch(err => console.error('[WorkflowService] Failed to trigger worker:', err));
+            })
+                .then(async (res) => {
+                    if (!res.ok) {
+                        const errorText = await res.text();
+                        console.error(`[WorkflowService] Worker failed for task ${taskToTrigger!.id}: ${res.status} ${errorText}`);
+
+                        // Map action to type
+                        let type = taskToTrigger!.action.replace('generate_', '').replace('regenerate_', '') as 'image' | 'audio' | 'music' | 'video';
+                        // Handle 'all_images' or 'all_audio' edge cases if any (though dispatchNext creates specific tasks)
+                        // The tasks created in dispatchNext are specific: generate_image, generate_audio, generate_video, generate_music.
+
+                        await WorkflowService.completeTask(
+                            taskToTrigger!.projectId,
+                            taskToTrigger!.sceneId,
+                            type,
+                            'failed',
+                            undefined,
+                            `Worker Error: ${errorText}`
+                        );
+                    }
+                })
+                .catch(async (err) => {
+                    console.error('[WorkflowService] Failed to trigger worker:', err);
+                    let type = taskToTrigger!.action.replace('generate_', '').replace('regenerate_', '') as 'image' | 'audio' | 'music' | 'video';
+                    await WorkflowService.completeTask(
+                        taskToTrigger!.projectId,
+                        taskToTrigger!.sceneId,
+                        type,
+                        'failed',
+                        undefined,
+                        `Trigger Error: ${err.message}`
+                    );
+                });
 
             return;
         }
