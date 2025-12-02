@@ -122,14 +122,7 @@ Para rodar em um servidor VPS (ex: Hostinger, DigitalOcean), você deve configur
     ```bash
     docker-compose up -d --build
     ```
-
-> **Solução de Problemas (Docker Antigo)**:
-> Se você encontrar o erro `KeyError: 'ContainerConfig'` ao rodar `docker-compose up`, isso se deve a uma incompatibilidade com versões antigas do Docker Compose (v1.x).
-> **Correção**: Remova o container antigo manualmente e tente novamente:
-> ```bash
-> docker rm -f shortsai-studio
-> docker-compose up -d studio
-> ```
+    *Nota: O deploy é automatizado via GitHub Actions para a branch `main`.*
 
 ## 📚 Documentação da API
 
