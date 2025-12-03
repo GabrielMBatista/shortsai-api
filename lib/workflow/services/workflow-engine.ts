@@ -25,16 +25,15 @@ export class WorkflowEngine {
         const fieldAttempts = `${type}_attempts` as const;
 
         if (status === 'completed') {
-            await WorkflowStateService.updateSceneStatus(projectId, sceneId, type, SceneStatus.completed);
-
-            // Update additional fields that updateSceneStatus doesn't handle generically
-            const updateData: any = {
-                [`${type}_url`]: outputUrl,
-                word_timings: timings || undefined,
-                duration_seconds: (typeof duration === 'number') ? duration : undefined,
-                error_message: null
+            // Prepare payload for DB and Broadcast
+            const payload: any = {
+                url: outputUrl,
+                timings: timings,
+                duration: (typeof duration === 'number') ? duration : undefined
             };
-            await prisma.scene.update({ where: { id: sceneId }, data: updateData });
+
+            // Update Status + DB + Broadcast in one go
+            await WorkflowStateService.updateSceneStatus(projectId, sceneId, type, SceneStatus.completed, null, payload);
 
             // Update user last_video_generated_at if it was a video task
             if (type === 'video') {
@@ -46,31 +45,6 @@ export class WorkflowEngine {
                     });
                 }
             }
-
-            // Broadcast update via SSE (StateService handles generic status, but we need to send URL/timings)
-            // Actually StateService.updateSceneStatus sends the status update. 
-            // We should probably send a more detailed update here or update StateService to handle it.
-            // For now, let's just send the specific update here to match original behavior
-            const broadcastPayload = {
-                type: 'scene_update',
-                sceneId,
-                field: type,
-                status: 'completed',
-                url: outputUrl,
-                timings: timings,
-                duration: (typeof duration === 'number') ? duration : undefined
-            };
-            // We need to import broadcastProjectUpdate or add a method to StateService. 
-            // Let's add a generic broadcast method to StateService? 
-            // Or just import it here. Let's import it to keep it simple for now, 
-            // but ideally StateService handles all broadcasting.
-            // I'll use StateService.updateSceneStatus for the status, but for the URL/timings, 
-            // the original code sent one big message.
-            // Let's rely on the fact that the frontend polls or listens.
-            // The original code sent one message with all data.
-            // Let's use a helper in StateService to broadcast arbitrary data?
-            // Or just re-implement the broadcast here.
-            // I'll import broadcastProjectUpdate from sse-service.
         } else {
             // Handle failure & Retry logic
             const scene = await prisma.scene.findUnique({ where: { id: sceneId } });

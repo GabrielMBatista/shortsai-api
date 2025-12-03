@@ -19,7 +19,7 @@ export class WorkflowStateService {
         broadcastProjectUpdate(projectId, { type: 'project_status_update', status });
     }
 
-    static async updateSceneStatus(projectId: string, sceneId: string, type: 'image' | 'audio' | 'video', status: SceneStatus, errorMessage?: string | null) {
+    static async updateSceneStatus(projectId: string, sceneId: string, type: 'image' | 'audio' | 'video', status: SceneStatus, errorMessage?: string | null, payload?: any) {
         const field = `${type}_status` as keyof Scene;
         const data: any = { [field]: status };
 
@@ -27,11 +27,36 @@ export class WorkflowStateService {
             data.error_message = errorMessage;
         }
 
+        // If payload contains DB fields like duration or timings, update them too
+        if (payload) {
+            if (payload.duration) data.duration_seconds = payload.duration;
+            if (payload.timings) data.word_timings = payload.timings;
+            // Note: URLs are usually updated separately or passed here if we want to update DB too.
+            // But WorkflowEngine updates DB manually for URLs currently. 
+            // Let's keep DB update minimal here to avoid conflicts, or we can move DB update here too.
+            // For now, let's trust the caller handles DB for complex fields if needed, 
+            // or we can add them to 'data' if they match schema.
+            if (payload.url) {
+                data[`${type}_url`] = payload.url;
+            }
+        }
+
         await prisma.scene.update({
             where: { id: sceneId },
             data
         });
-        broadcastProjectUpdate(projectId, { type: 'scene_update', sceneId, field: type, status });
+
+        // Broadcast with full payload
+        const broadcastData = {
+            type: 'scene_update',
+            sceneId,
+            field: type,
+            status,
+            error: errorMessage, // Send error explicitly
+            ...payload // Merge extra fields like url, timings, duration
+        };
+
+        broadcastProjectUpdate(projectId, broadcastData);
     }
 
     static async updateMusicStatus(projectId: string, status: MusicStatus, url?: string) {
