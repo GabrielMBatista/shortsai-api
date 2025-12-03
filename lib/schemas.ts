@@ -27,6 +27,9 @@ export const updateProjectSchema = z.object({
     status: z.string().optional(), // Allow updating status? Maybe restrict specific transitions later
     generated_title: z.string().optional(),
     generated_description: z.string().optional(),
+    folder_id: z.string().optional().nullable(),
+    is_archived: z.boolean().optional(),
+    tags: z.array(z.string()).optional(),
 });
 
 export const createCharacterSchema = z.object({
