@@ -29,7 +29,8 @@ export class WorkflowStateService {
 
         // If payload contains DB fields like duration or timings, update them too
         if (payload) {
-            if (payload.duration) data.duration_seconds = payload.duration;
+            // Prevent video generation from overwriting audio duration
+            if (payload.duration && type !== 'video') data.duration_seconds = payload.duration;
             if (payload.timings) data.word_timings = payload.timings;
             // Note: URLs are usually updated separately or passed here if we want to update DB too.
             // But WorkflowEngine updates DB manually for URLs currently. 
@@ -39,6 +40,11 @@ export class WorkflowStateService {
             if (payload.url) {
                 data[`${type}_url`] = payload.url;
             }
+        }
+
+        // Auto-switch media type to video if video generation completes
+        if (type === 'video' && status === SceneStatus.completed) {
+            data.media_type = 'video';
         }
 
         await prisma.scene.update({
@@ -53,6 +59,7 @@ export class WorkflowStateService {
             field: type,
             status,
             error: errorMessage, // Send error explicitly
+            mediaType: data.media_type, // Broadcast media type change
             ...payload // Merge extra fields like url, timings, duration
         };
 
