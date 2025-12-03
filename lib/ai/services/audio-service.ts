@@ -64,7 +64,7 @@ export class AudioService {
     private static async generateElevenLabsAudio(userId: string, text: string, voiceId: string, providedKey?: string): Promise<{ url: string, timings?: any[], duration?: number }> {
         const { key: apiKey, isSystem } = await KeyManager.getElevenLabsKey(userId, providedKey);
         const ELEVEN_LABS_API_URL = "https://api.elevenlabs.io/v1";
-        const modelId = "eleven_multilingual_v2";
+        const modelId = "eleven_flash_v2_5";
 
         return executeRequest(isSystem, async () => {
             const response = await fetch(`${ELEVEN_LABS_API_URL}/text-to-speech/${voiceId}/with-timestamps`, {
