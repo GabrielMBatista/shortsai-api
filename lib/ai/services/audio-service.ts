@@ -4,9 +4,9 @@ import { trackUsage } from '../core/usage-tracker';
 import { createWavDataUri } from '../utils/audio-helpers';
 
 export class AudioService {
-    static async generateAudio(userId: string, text: string, voice: string, provider: string, keys?: { gemini?: string, elevenlabs?: string, groq?: string }): Promise<{ url: string, timings?: any[], duration?: number }> {
+    static async generateAudio(userId: string, text: string, voice: string, provider: string, keys?: { gemini?: string, elevenlabs?: string, groq?: string }, modelId?: string): Promise<{ url: string, timings?: any[], duration?: number }> {
         if (provider === 'elevenlabs') {
-            return this.generateElevenLabsAudio(userId, text, voice, keys?.elevenlabs);
+            return this.generateElevenLabsAudio(userId, text, voice, keys?.elevenlabs, modelId);
         } else if (provider === 'groq') {
             return this.generateGroqAudio(userId, text, voice, keys?.groq);
         } else {
@@ -61,10 +61,9 @@ export class AudioService {
         }, userId);
     }
 
-    private static async generateElevenLabsAudio(userId: string, text: string, voiceId: string, providedKey?: string): Promise<{ url: string, timings?: any[], duration?: number }> {
+    private static async generateElevenLabsAudio(userId: string, text: string, voiceId: string, providedKey?: string, modelId: string = "eleven_flash_v2_5"): Promise<{ url: string, timings?: any[], duration?: number }> {
         const { key: apiKey, isSystem } = await KeyManager.getElevenLabsKey(userId, providedKey);
         const ELEVEN_LABS_API_URL = "https://api.elevenlabs.io/v1";
-        const modelId = "eleven_flash_v2_5";
 
         return executeRequest(isSystem, async () => {
             const response = await fetch(`${ELEVEN_LABS_API_URL}/text-to-speech/${voiceId}/with-timestamps`, {

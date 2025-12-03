@@ -167,6 +167,9 @@ export async function GET(request: Request) {
                 generated_title: true,
                 generated_description: true,
                 status: true,
+                is_archived: true,
+                tags: true,
+                folder_id: true,
                 scenes: {
                     where: { deleted_at: null },
                     select: {

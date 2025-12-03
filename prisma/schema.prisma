@@ -94,6 +94,7 @@ model User {
   api_keys    ApiKey?
   user_limits UserLimits?
   projects    Project[]
+  folders     Folder[]
   characters  Character[]
   usage_logs  UsageLog[]
 
@@ -198,6 +199,7 @@ model Project {
   reference_image_url           String?
   reference_characters_snapshot Json?
   video_model                   String        @default("veo")
+  audio_model                   String?
   include_music                 Boolean       @default(false)
   bg_music_prompt               String?
   bg_music_url                  String?
@@ -208,8 +210,12 @@ model Project {
   duration_config               Json?
   lock_session_id               String?
   lock_expires_at               DateTime?
-  created_at                    DateTime      @default(now())
-  updated_at                    DateTime      @default(now()) @updatedAt
+  is_archived   Boolean       @default(false)
+  tags          String[]      @default([])
+  folder_id     String?
+  folder        Folder?       @relation(fields: [folder_id], references: [id])
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @default(now()) @updatedAt
 
   user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
   scenes     Scene[]
@@ -218,6 +224,21 @@ model Project {
 
   @@index([user_id])
   @@map("projects")
+}
+
+model Folder {
+  id        String   @id @default(uuid())
+  name      String
+  user_id   String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  projects Project[]
+
+  @@unique([user_id, name])
+  @@index([user_id])
+  @@map("folders")
 }
 
 model Scene {

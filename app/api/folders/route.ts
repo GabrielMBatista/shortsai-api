@@ -1,0 +1,71 @@
+import { prisma } from '@/lib/prisma';
+import { NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import { z } from 'zod';
+
+export const dynamic = 'force-dynamic';
+
+const createFolderSchema = z.object({
+    name: z.string().min(1).max(50),
+});
+
+export async function POST(request: Request) {
+    try {
+        const session = await auth();
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const body = await request.json();
+        const validation = createFolderSchema.safeParse(body);
+
+        if (!validation.success) {
+            return NextResponse.json({ error: 'Validation Error', details: validation.error.format() }, { status: 400 });
+        }
+
+        const { name } = validation.data;
+        const user_id = session.user.id;
+
+        const folder = await prisma.folder.create({
+            data: {
+                name,
+                user_id,
+            },
+        });
+
+        return NextResponse.json(folder);
+    } catch (error: any) {
+        // Handle unique constraint violation
+        if (error.code === 'P2002') {
+            return NextResponse.json({ error: 'Folder with this name already exists' }, { status: 409 });
+        }
+        console.error('Error creating folder:', error);
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+}
+
+export async function GET(request: Request) {
+    try {
+        const session = await auth();
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const user_id = session.user.id;
+
+        const folders = await prisma.folder.findMany({
+            where: { user_id },
+            orderBy: { name: 'asc' },
+            include: {
+                _count: {
+                    select: { projects: true }
+                }
+            }
+        });
+
+        return NextResponse.json(folders);
+    } catch (error: any) {
+        console.error('Error fetching folders:', error);
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+}

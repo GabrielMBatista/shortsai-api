@@ -41,8 +41,8 @@ export class AIService {
         return VideoService.generateVideo(userId, imageUrl, prompt, keys, modelId, withAudio);
     }
 
-    static async generateAudio(userId: string, text: string, voice: string, provider: string, keys?: { gemini?: string, elevenlabs?: string, groq?: string }) {
-        return AudioService.generateAudio(userId, text, voice, provider, keys);
+    static async generateAudio(userId: string, text: string, voice: string, provider: string, keys?: { gemini?: string, elevenlabs?: string, groq?: string }, modelId?: string) {
+        return AudioService.generateAudio(userId, text, voice, provider, keys, modelId);
     }
 
     static async getElevenLabsVoices(userId: string, providedKey?: string) {

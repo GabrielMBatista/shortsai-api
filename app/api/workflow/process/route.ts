@@ -58,7 +58,8 @@ export async function POST(request: Request) {
                             task.params.text,
                             task.params.voice,
                             task.params.provider,
-                            task.apiKeys
+                            task.apiKeys,
+                            project.audio_model || undefined
                         );
                         outputUrl = result.url;
                         timings = result.timings;
