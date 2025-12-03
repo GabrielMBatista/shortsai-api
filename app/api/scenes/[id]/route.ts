@@ -23,7 +23,8 @@ export async function PATCH(
             duration_seconds,
             video_url,
             video_status,
-            media_type
+            media_type,
+            scene_number
         } = body;
 
         // Verify ownership
@@ -48,7 +49,8 @@ export async function PATCH(
                 duration_seconds,
                 video_url,
                 video_status,
-                media_type
+                media_type,
+                scene_number
             },
         });
 
