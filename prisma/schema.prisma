@@ -267,11 +267,37 @@ model Scene {
 
   project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
 
+  status    String   @default("DRAFT") // DRAFT, QUEUED, GENERATING, READY, FAILED
+  version   Int      @default(0)       // Controle de concorrência
+  jobs      Job[]    // Relacionamento reverso
+
   // Removed unique constraint to allow soft deletes with reordering
   // @@unique([project_id, scene_number])
   @@index([project_id])
   @@index([project_id, scene_number])
   @@map("scenes")
+}
+
+model Job {
+  id          String   @id @default(cuid())
+  type        String   // Ex: "VIDEO_GENERATION", "TTS_GENERATION"
+  status      String   @default("QUEUED") // QUEUED, PROCESSING, COMPLETED, FAILED
+  
+  // Dados para execução e resultado
+  inputPayload  Json   // O que foi enviado para gerar (prompt, settings)
+  outputResult  Json?  // O resultado (URL, duração)
+  errorMessage  String?
+
+  // Relacionamentos
+  projectId   String
+  sceneId     String?
+  scene       Scene?   @relation(fields: [sceneId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([sceneId])
 }
 
 model UserLimits {
