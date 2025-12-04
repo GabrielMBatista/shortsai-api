@@ -14,13 +14,14 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const folderId = searchParams.get('folderId');
         const tag = searchParams.get('tag');
-        const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 5;
+        const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 50;
 
         const user_id = session.user.id;
 
         const whereClause: any = {
             user_id,
             status: 'completed', // Only export completed projects context
+            is_archived: false,
         };
 
         if (folderId) {
