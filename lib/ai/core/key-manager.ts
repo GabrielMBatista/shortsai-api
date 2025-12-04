@@ -3,6 +3,10 @@ import { GoogleGenAI } from "@google/genai";
 
 export class KeyManager {
     static async getGeminiKey(userId: string, providedKey?: string): Promise<{ key: string, isSystem: boolean }> {
+        if (!userId) {
+            throw new Error("userId is required but was undefined. This likely means the payload was not constructed correctly.");
+        }
+        
         if (providedKey) return { key: providedKey, isSystem: false };
 
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
@@ -25,6 +29,10 @@ export class KeyManager {
     }
 
     static async getElevenLabsKey(userId: string, providedKey?: string): Promise<{ key: string, isSystem: boolean }> {
+        if (!userId) {
+            throw new Error("userId is required but was undefined. This likely means the payload was not constructed correctly.");
+        }
+        
         if (providedKey) return { key: providedKey, isSystem: false };
 
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
@@ -39,6 +47,10 @@ export class KeyManager {
     }
 
     static async getGroqKey(userId: string, providedKey?: string): Promise<{ key: string, isSystem: boolean }> {
+        if (!userId) {
+            throw new Error("userId is required but was undefined. This likely means the payload was not constructed correctly.");
+        }
+        
         if (providedKey) return { key: providedKey, isSystem: false };
 
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
@@ -53,6 +65,10 @@ export class KeyManager {
     }
 
     static async getSunoKey(userId: string, providedKey?: string): Promise<{ key: string, isSystem: boolean }> {
+        if (!userId) {
+            throw new Error("userId is required but was undefined. This likely means the payload was not constructed correctly.");
+        }
+        
         if (providedKey) return { key: providedKey, isSystem: false };
 
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });

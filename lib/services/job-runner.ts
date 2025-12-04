@@ -31,6 +31,7 @@ async function processJob(jobId: string) {
         if (!job) return;
 
         // --- SUA LÓGICA PESADA ANTIGA AQUI ---
+        console.log('[Job Runner] Processing job with payload:', JSON.stringify(job.inputPayload, null, 2));
         let { userId, imageUrl, prompt, keys, modelId, withAudio } = job.inputPayload as any;
 
         // If imageUrl is missing (e.g. removed to avoid 413), fetch from Scene
