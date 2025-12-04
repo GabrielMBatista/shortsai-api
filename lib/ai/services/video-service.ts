@@ -50,7 +50,14 @@ export class VideoService {
                         role: "user",
                         parts: [
                             {
-                                text: `Create a concise (under 40 words) cinematic animation prompt based on this visual description. Focus on movement, camera angle and atmosphere. Output ONLY the prompt: "${prompt}"`
+                                text: `Create a concise (under 40 words) cinematic animation prompt based on this visual description. Focus on movement, camera angle and atmosphere. 
+                                IMPORTANT: Ensure the output is completely safe and strictly adheres to safety guidelines. 
+                                - NO children or minors.
+                                - NO prominent real-world people or celebrities.
+                                - NO violence, gore, weapons, or dangerous activities.
+                                - NO sexual content, nudity, or toxic language.
+                                - NO personally identifiable information.
+                                Output ONLY the prompt: "${prompt}"`
                             }
                         ]
                     }
