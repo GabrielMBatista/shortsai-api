@@ -158,7 +158,29 @@ export async function GET(request: Request) {
         const limit = limitParam ? parseInt(limitParam) : undefined;
         const offset = offsetParam ? parseInt(offsetParam) : undefined;
 
-        const where = { user_id };
+        const folderIdParam = searchParams.get('folder_id');
+        const isArchivedParam = searchParams.get('is_archived');
+
+        const where: any = { user_id };
+
+        if (folderIdParam === 'root') {
+            where.folder_id = null;
+        } else if (folderIdParam) {
+            where.folder_id = folderIdParam;
+        }
+
+        if (isArchivedParam !== null) {
+            where.is_archived = isArchivedParam === 'true';
+        } else {
+            // Default behavior: if not specified, usually we might want to show unarchived?
+            // But existing frontend logic sends is_archived=false explicitly for default view.
+            // If the frontend doesn't send it, we might want to default to false to hide archived projects?
+            // However, let's stick to what was requested. If param is missing, don't filter (or let frontend handle it).
+            // Actually, looking at previous frontend code, it was filtering client side.
+            // Best practice: Default to is_archived: false if not specified? 
+            // Let's rely on the explicit param from frontend for now to avoid breaking changes if 'all' is needed.
+            // But wait, the frontend sends `is_archived=${isArchived}` which is boolean.
+        }
 
         const [projects, total] = await Promise.all([
             prisma.project.findMany({
