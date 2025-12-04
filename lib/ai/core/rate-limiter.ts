@@ -59,33 +59,49 @@ export class RateLimiter {
 
     static async acquireVideoSlot(userId: string) {
         const cooldownMs = 40000;
-        const threshold = new Date(Date.now() - cooldownMs);
 
-        // Atomic update: only succeeds if enough time has passed
-        const result = await prisma.user.updateMany({
-            where: {
-                id: userId,
-                OR: [
-                    { last_video_generated_at: null },
-                    { last_video_generated_at: { lt: threshold } }
-                ]
-            },
-            data: {
-                last_video_generated_at: new Date()
+        while (true) {
+            const threshold = new Date(Date.now() - cooldownMs);
+
+            // Atomic update: only succeeds if enough time has passed
+            const result = await prisma.user.updateMany({
+                where: {
+                    id: userId,
+                    OR: [
+                        { last_video_generated_at: null },
+                        { last_video_generated_at: { lt: threshold } }
+                    ]
+                },
+                data: {
+                    last_video_generated_at: new Date()
+                }
+            });
+
+            // Success! Slot acquired
+            if (result.count > 0) {
+                return;
             }
-        });
 
-        if (result.count === 0) {
+            // Failed to acquire slot - calculate wait time
             const user = await prisma.user.findUnique({
                 where: { id: userId },
                 select: { last_video_generated_at: true }
             });
+
             if (user?.last_video_generated_at) {
                 const diff = Date.now() - user.last_video_generated_at.getTime();
-                const waitSeconds = Math.ceil((cooldownMs - diff) / 1000);
-                throw new Error(`Please wait ${Math.max(1, waitSeconds)}s before generating another video.`);
+                const waitMs = cooldownMs - diff;
+
+                if (waitMs > 0) {
+                    console.log(`[RateLimiter] User ${userId} waiting ${Math.ceil(waitMs / 1000)}s for video cooldown...`);
+                    // Wait for the cooldown period, then retry
+                    await new Promise(resolve => setTimeout(resolve, waitMs + 100)); // +100ms buffer
+                    continue; // Retry the atomic update
+                }
             }
-            throw new Error("Rate limit exceeded. Please wait.");
+
+            // Shouldn't reach here, but if we do, just return
+            return;
         }
     }
 

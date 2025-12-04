@@ -1,12 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { VideoService } from "@/lib/ai/services/video-service";
+import { JobStatus, JobType, SceneStatus } from "@/lib/constants/job-status";
 
 export async function createVideoJob(sceneId: string, projectId: string, payload: any) {
     // 1. Cria o registro da intenção
     const job = await prisma.job.create({
         data: {
-            type: "VIDEO_GENERATION",
-            status: "QUEUED",
+            type: JobType.VIDEO_GENERATION,
+            status: JobStatus.QUEUED,
             sceneId,
             projectId,
             inputPayload: payload
@@ -24,7 +25,7 @@ async function processJob(jobId: string) {
         // Marca como processando
         await prisma.job.update({
             where: { id: jobId },
-            data: { status: "PROCESSING" }
+            data: { status: JobStatus.PROCESSING }
         });
 
         const job = await prisma.job.findUnique({ where: { id: jobId } });
@@ -62,7 +63,7 @@ async function processJob(jobId: string) {
             await tx.job.update({
                 where: { id: jobId },
                 data: {
-                    status: "COMPLETED",
+                    status: JobStatus.COMPLETED,
                     outputResult: { videoUrl }
                 }
             });
@@ -73,7 +74,7 @@ async function processJob(jobId: string) {
                     where: { id: job.sceneId },
                     data: {
                         video_url: videoUrl,
-                        video_status: "completed", // Update existing enum status
+                        video_status: SceneStatus.COMPLETED,
                         status: "READY",           // Update new string status
                         version: { increment: 1 },
                         media_type: "video"        // Auto-switch to video
@@ -102,7 +103,7 @@ async function processJob(jobId: string) {
         await prisma.job.update({
             where: { id: jobId },
             data: {
-                status: "FAILED",
+                status: JobStatus.FAILED,
                 errorMessage: error.message || "Unknown error"
             }
         });
@@ -115,7 +116,7 @@ async function processJob(jobId: string) {
                     where: { id: failedJob.sceneId },
                     data: {
                         status: "FAILED",
-                        video_status: "failed",
+                        video_status: SceneStatus.FAILED,
                         error_message: error.message || "Unknown error"
                     }
                 });
