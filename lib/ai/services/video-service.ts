@@ -38,6 +38,36 @@ export class VideoService {
         let selectedModel = modelId;
         if (selectedModel === 'veo') selectedModel = 'veo-2.0-generate-001';
 
+        // 1. Extract context using Gemini Flash for better animation prompts
+        let animationPrompt = "";
+        try {
+            const { client: ai } = await KeyManager.getGeminiClient(userId, keys?.gemini);
+
+            const result = await ai.models.generateContent({
+                model: "gemini-2.0-flash-exp",
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            {
+                                text: `Create a concise (under 40 words) cinematic animation prompt based on this visual description. Focus on movement, camera angle and atmosphere. Output ONLY the prompt: "${prompt}"`
+                            }
+                        ]
+                    }
+                ]
+            });
+
+            const extractedPrompt = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (extractedPrompt) {
+                console.log(`[VideoService] Extracted animation context: ${extractedPrompt}`);
+                animationPrompt = extractedPrompt;
+            }
+        } catch (e) {
+            console.warn("[VideoService] Failed to extract context, falling back to provided prompt", e);
+            // Fallback to using the original prompt if extraction fails, but truncated
+            animationPrompt = prompt.substring(0, 100);
+        }
+
         return executeRequest(isSystem, async () => {
             console.log(`[AIService] Generating video with ${selectedModel} for user ${userId}`);
 
@@ -53,7 +83,7 @@ export class VideoService {
                     body: JSON.stringify({
                         instances: [
                             {
-                                prompt: `Cinematic slow motion animation of this image. Ambient movement, high quality video background.`,
+                                prompt: `Cinematic slow motion animation of this image. Ambient movement, high quality video background. ${animationPrompt}`,
                                 image: {
                                     bytesBase64Encoded: base64Data,
                                     mimeType: mimeType,
@@ -62,7 +92,7 @@ export class VideoService {
                         ],
                         parameters: {
                             aspectRatio: '9:16', // Vertical video for shorts
-                            negativePrompt: 'abrupt cuts, discontinuity, inconsistent lighting',
+                            negativePrompt: 'abrupt cuts, discontinuity, inconsistent lighting, morphing, distortion',
                         },
                     }),
                 }
