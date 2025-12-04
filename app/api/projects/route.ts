@@ -150,38 +150,67 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const { searchParams } = new URL(request.url);
         const user_id = session.user.id;
+        const limitParam = searchParams.get('limit');
+        const offsetParam = searchParams.get('offset');
 
-        const projects = await prisma.project.findMany({
-            where: { user_id },
-            orderBy: { created_at: 'desc' },
-            select: {
-                id: true,
-                user_id: true,
-                topic: true,
-                style: true,
-                language: true,
-                voice_name: true,
-                tts_provider: true,
-                created_at: true,
-                generated_title: true,
-                generated_description: true,
-                status: true,
-                is_archived: true,
-                tags: true,
-                folder_id: true,
-                scenes: {
-                    where: { deleted_at: null },
-                    select: {
-                        id: true,
-                        image_status: true,
-                        image_url: true,
-                        audio_status: true
-                    },
-                    orderBy: { scene_number: 'asc' }
+        const limit = limitParam ? parseInt(limitParam) : undefined;
+        const offset = offsetParam ? parseInt(offsetParam) : undefined;
+
+        const where = { user_id };
+
+        const [projects, total] = await prisma.$transaction([
+            prisma.project.findMany({
+                where,
+                orderBy: { created_at: 'desc' },
+                take: limit,
+                skip: offset,
+                select: {
+                    id: true,
+                    user_id: true,
+                    topic: true,
+                    style: true,
+                    language: true,
+                    voice_name: true,
+                    tts_provider: true,
+                    created_at: true,
+                    generated_title: true,
+                    generated_description: true,
+                    status: true,
+                    is_archived: true,
+                    tags: true,
+                    folder_id: true,
+                    scenes: {
+                        where: { deleted_at: null },
+                        select: {
+                            id: true,
+                            scene_number: true,
+                            image_status: true,
+                            image_url: true,
+                            audio_status: true
+                        },
+                        orderBy: { scene_number: 'asc' }
+                    }
                 }
-            }
-        });
+            }),
+            prisma.project.count({ where })
+        ]);
+
+        // If pagination is used, return wrapper. If not, return array for backward compatibility (or just always return wrapper if we update frontend simultaneously)
+        // The user explicitly asked for optimization, so let's standardise on the wrapper if limit is present.
+        // However, to be safe and consistent, let's check if limit was requested.
+
+        if (limit !== undefined) {
+            return NextResponse.json({
+                data: projects,
+                meta: {
+                    total,
+                    limit,
+                    offset: offset || 0
+                }
+            });
+        }
 
         return NextResponse.json(projects);
     } catch (error: any) {
