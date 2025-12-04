@@ -56,6 +56,7 @@ async function processJob(jobId: string) {
         // -------------------------------------
 
         // Transação Atômica: Atualiza Job E Cena juntos
+        // Timeout increased to 10 minutes to handle long video generation
         await prisma.$transaction(async (tx) => {
             // Finaliza Job
             await tx.job.update({
@@ -79,6 +80,8 @@ async function processJob(jobId: string) {
                     }
                 });
             }
+        }, {
+            timeout: 600000 // 10 minutes timeout for video generation
         });
 
         // Broadcast update via SSE
