@@ -291,10 +291,10 @@ export class WorkflowEngine {
             await WorkflowStateService.updateProjectStatus(project.id, 'completed');
         } else if (project.status === 'generating') {
             const isProcessing = project.scenes.some((s: any) =>
-                s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
-                s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
-                s.video_status === SceneStatus.processing || s.video_status === SceneStatus.loading ||
-                project.bg_music_status === 'loading'
+                ['processing', 'loading', 'queued', 'pending'].includes(s.image_status) ||
+                ['processing', 'loading', 'queued', 'pending'].includes(s.audio_status) ||
+                ['processing', 'loading', 'queued', 'pending'].includes(s.video_status) ||
+                ['loading', 'queued', 'pending'].includes(project.bg_music_status)
             );
 
             if (!isProcessing) {

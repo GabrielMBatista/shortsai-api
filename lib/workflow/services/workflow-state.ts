@@ -108,9 +108,19 @@ export class WorkflowStateService {
         const project = await this.getProjectWithScenes(projectId);
         if (!project) return;
 
+        // Re-evaluate project status to ensure it's up to date with scenes
+        const isProcessing = project.scenes.some(s =>
+            s.image_status === 'processing' || s.image_status === 'loading' || s.image_status === 'queued' || s.image_status === 'pending' ||
+            s.audio_status === 'processing' || s.audio_status === 'loading' || s.audio_status === 'queued' || s.audio_status === 'pending' ||
+            (s as any).video_status === 'processing' || (s as any).video_status === 'loading' || (s as any).video_status === 'queued' ||
+            project.bg_music_status === 'loading' || project.bg_music_status === 'queued' || project.bg_music_status === 'pending'
+        );
+
+        const computedStatus = isProcessing ? 'generating' : (project.status === 'failed' ? 'failed' : 'completed');
+
         const broadcastPayload = {
             type: 'init',
-            projectStatus: project.status,
+            projectStatus: computedStatus,
             scenes: project.scenes.map(s => ({
                 id: s.id,
                 sceneNumber: s.scene_number,
