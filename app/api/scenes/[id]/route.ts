@@ -87,9 +87,23 @@ export async function DELETE(
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
-        await prisma.scene.update({
-            where: { id },
-            data: { deleted_at: new Date() }
+        // Use transaction to delete and reorder
+        await prisma.$transaction(async (tx) => {
+            // Delete the scene
+            await tx.scene.delete({
+                where: { id }
+            });
+
+            // Reorder remaining scenes
+            await tx.scene.updateMany({
+                where: {
+                    project_id: existingScene.project_id,
+                    scene_number: { gt: existingScene.scene_number }
+                },
+                data: {
+                    scene_number: { decrement: 1 }
+                }
+            });
         });
 
         return NextResponse.json({ success: true });
