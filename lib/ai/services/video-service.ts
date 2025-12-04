@@ -58,6 +58,7 @@ export class VideoService {
                                 - NO sexual content, nudity, or toxic language.
                                 - NO personally identifiable information.
                                 - REPLACE names of religious figures (e.g. Jesus) or famous people with generic visual descriptions (e.g. 'a bearded man in robes').
+                                - Ensure the subject stays in frame and does NOT turn their back unless explicitly requested.
                                 Output ONLY the prompt: "${prompt}"`
                             }
                         ]
