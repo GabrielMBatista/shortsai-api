@@ -7,7 +7,7 @@ export class ImageService {
     static async generateImage(userId: string, prompt: string, style: string, keys?: { gemini?: string }): Promise<string> {
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId, keys?.gemini);
 
-        const fullPrompt = `Create a vertical (9:16) image in the style of ${style}. Scene: ${prompt}.`;
+        const fullPrompt = `Create a vertical (9:16) image in the style of ${style}. Scene: ${prompt}. \n\nIMPORTANT: Return ONLY the generated image. Do not provide any text description or conversational response.`;
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({

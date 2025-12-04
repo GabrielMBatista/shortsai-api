@@ -46,7 +46,8 @@ export async function retryWithBackoff<T>(
             error?.status === 429 ||
             error?.status === 503 ||
             (error?.message && error.message.includes("429")) ||
-            (error?.message && error.message.includes("RESOURCE_EXHAUSTED"));
+            (error?.message && error.message.includes("RESOURCE_EXHAUSTED")) ||
+            (error?.message && error.message.includes("Model Refusal") && (error.message.includes("Okay") || error.message.includes("Here")));
 
         if (retries > 0 && isQuotaError) {
             console.warn(`Quota hit(429).Retrying in ${baseDelay}ms... (${retries} retries left)`);
