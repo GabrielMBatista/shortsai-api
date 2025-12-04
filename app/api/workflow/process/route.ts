@@ -118,7 +118,7 @@ export async function POST(request: Request) {
             await WorkflowService.completeTask(
                 task.projectId,
                 task.sceneId!,
-                task.action === 'generate_image' ? 'image' : (task.action === 'generate_music' ? 'music' : 'audio'),
+                task.action === 'generate_image' ? 'image' : (task.action === 'generate_music' ? 'music' : (task.action === 'generate_video' ? 'video' : 'audio')),
                 'failed',
                 undefined,
                 error.message,

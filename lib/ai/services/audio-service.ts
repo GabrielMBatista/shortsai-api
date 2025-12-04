@@ -5,7 +5,10 @@ import { createWavDataUri } from '../utils/audio-helpers';
 
 export class AudioService {
     static async generateAudio(userId: string, text: string, voice: string, provider: string, keys?: { gemini?: string, elevenlabs?: string, groq?: string }, modelId?: string): Promise<{ url: string, timings?: any[], duration?: number }> {
-        if (provider === 'elevenlabs') {
+        // Auto-detect ElevenLabs ID (20 chars alphanumeric) to prevent mismatch errors
+        const isElevenLabsId = voice && voice.length === 20 && /^[a-zA-Z0-9]+$/.test(voice);
+
+        if (provider === 'elevenlabs' || isElevenLabsId) {
             return this.generateElevenLabsAudio(userId, text, voice, keys?.elevenlabs, modelId);
         } else if (provider === 'groq') {
             return this.generateGroqAudio(userId, text, voice, keys?.groq);

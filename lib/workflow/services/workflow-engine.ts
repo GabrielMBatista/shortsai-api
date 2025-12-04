@@ -230,6 +230,10 @@ export class WorkflowEngine {
                         console.error(`[WorkflowEngine] Worker failed for task ${taskToTrigger!.id}: ${res.status} ${errorText}`);
 
                         let type = taskToTrigger!.action.replace('generate_', '').replace('regenerate_', '') as 'image' | 'audio' | 'music' | 'video';
+                        if (!['image', 'audio', 'music', 'video'].includes(type)) {
+                            type = 'audio';
+                            console.warn(`[WorkflowEngine] Unknown task type inferred: ${type} from action ${taskToTrigger!.action}`);
+                        }
 
                         await this.completeTask(
                             taskToTrigger!.projectId,
@@ -244,6 +248,11 @@ export class WorkflowEngine {
                 .catch(async (err) => {
                     console.error('[WorkflowEngine] Failed to trigger worker:', err);
                     let type = taskToTrigger!.action.replace('generate_', '').replace('regenerate_', '') as 'image' | 'audio' | 'music' | 'video';
+                    // Fallback if regex fails or action is unknown (though it shouldn't be)
+                    if (!['image', 'audio', 'music', 'video'].includes(type)) {
+                        type = 'audio'; // Default fallback, but log warning
+                        console.warn(`[WorkflowEngine] Unknown task type inferred: ${type} from action ${taskToTrigger!.action}`);
+                    }
                     await this.completeTask(
                         taskToTrigger!.projectId,
                         taskToTrigger!.sceneId,

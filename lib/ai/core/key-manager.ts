@@ -8,7 +8,10 @@ export class KeyManager {
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
         const userKey = keys?.gemini_key;
 
-        if (userKey) return { key: userKey, isSystem: false };
+        if (userKey) {
+            if (!userKey.startsWith('AIza')) throw new Error("Invalid Gemini API Key format (must start with AIza)");
+            return { key: userKey, isSystem: false };
+        }
 
         const systemKey = process.env.GEMINI_API_KEY;
         if (!systemKey) throw new Error("Gemini API Key missing");
