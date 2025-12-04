@@ -31,7 +31,17 @@ async function processJob(jobId: string) {
         if (!job) return;
 
         // --- SUA LÓGICA PESADA ANTIGA AQUI ---
-        const { userId, imageUrl, prompt, keys, modelId, withAudio } = job.inputPayload as any;
+        let { userId, imageUrl, prompt, keys, modelId, withAudio } = job.inputPayload as any;
+
+        // If imageUrl is missing (e.g. removed to avoid 413), fetch from Scene
+        if (!imageUrl && job.sceneId) {
+            const scene = await prisma.scene.findUnique({ where: { id: job.sceneId } });
+            if (scene?.image_url) {
+                imageUrl = scene.image_url;
+            } else {
+                throw new Error("Image URL not found for scene");
+            }
+        }
 
         // Call the existing VideoService
         const videoUrl = await VideoService.generateVideo(
