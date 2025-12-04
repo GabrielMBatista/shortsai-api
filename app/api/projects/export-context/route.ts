@@ -20,7 +20,6 @@ export async function GET(request: Request) {
 
         const whereClause: any = {
             user_id,
-            status: 'completed', // Only export completed projects context
             is_archived: false,
         };
 
