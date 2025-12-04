@@ -63,11 +63,25 @@ async function processJob(jobId: string) {
                         video_url: videoUrl,
                         video_status: "completed", // Update existing enum status
                         status: "READY",           // Update new string status
-                        version: { increment: 1 }
+                        version: { increment: 1 },
+                        media_type: "video"        // Auto-switch to video
                     }
                 });
             }
         });
+
+        // Broadcast update via SSE
+        if (job.sceneId && job.projectId) {
+            const { broadcastProjectUpdate } = await import("@/lib/sse/sse-service");
+            broadcastProjectUpdate(job.projectId, {
+                type: 'scene_update',
+                sceneId: job.sceneId,
+                field: 'video',
+                status: 'completed',
+                url: videoUrl,
+                mediaType: 'video'
+            });
+        }
 
     } catch (error: any) {
         console.error(`Erro no Job ${jobId}:`, error);
@@ -91,6 +105,17 @@ async function processJob(jobId: string) {
                         error_message: error.message || "Unknown error"
                     }
                 });
+
+                if (failedJob.projectId) {
+                    const { broadcastProjectUpdate } = await import("@/lib/sse/sse-service");
+                    broadcastProjectUpdate(failedJob.projectId, {
+                        type: 'scene_update',
+                        sceneId: failedJob.sceneId,
+                        field: 'video',
+                        status: 'failed',
+                        error: error.message || "Unknown error"
+                    });
+                }
             } catch (e) {
                 console.error("Failed to update scene status to FAILED", e);
             }

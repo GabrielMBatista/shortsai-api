@@ -3,6 +3,7 @@ import { Project, Scene, SceneStatus, MusicStatus } from '@prisma/client';
 import { WorkflowStateService } from './services/workflow-state';
 import { WorkflowEngine } from './services/workflow-engine';
 import { WorkflowCommand, WorkflowTask } from './types';
+import { createVideoJob } from '../services/job-runner';
 
 export * from './types';
 
@@ -36,7 +37,18 @@ export class WorkflowService {
             case 'generate_video':
             case 'regenerate_video':
                 if (!sceneId) throw new Error('Scene ID required');
-                return this.queueSceneAsset(projectId, sceneId, 'video', force, apiKeys);
+                const scene = project.scenes.find(s => s.id === sceneId);
+                if (!scene) throw new Error('Scene not found');
+
+                await createVideoJob(sceneId, projectId, {
+                    userId: project.user_id,
+                    imageUrl: scene.image_url,
+                    prompt: scene.visual_description,
+                    keys: apiKeys,
+                    modelId: (project as any).video_model || 'veo-2.0-generate-001',
+                    withAudio: false
+                });
+                return { message: 'Video generation started (Async)' };
             case 'generate_music':
                 return this.queueMusic(projectId, force, apiKeys);
             case 'cancel':
