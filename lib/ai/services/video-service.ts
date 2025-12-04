@@ -57,6 +57,7 @@ export class VideoService {
                                 - NO violence, gore, weapons, or dangerous activities.
                                 - NO sexual content, nudity, or toxic language.
                                 - NO personally identifiable information.
+                                - REPLACE names of religious figures (e.g. Jesus) or famous people with generic visual descriptions (e.g. 'a bearded man in robes').
                                 Output ONLY the prompt: "${prompt}"`
                             }
                         ]
