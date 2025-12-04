@@ -160,7 +160,7 @@ export async function GET(request: Request) {
 
         const where = { user_id };
 
-        const [projects, total] = await prisma.$transaction([
+        const [projects, total] = await Promise.all([
             prisma.project.findMany({
                 where,
                 orderBy: { created_at: 'desc' },
