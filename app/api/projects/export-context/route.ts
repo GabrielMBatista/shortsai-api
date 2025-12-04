@@ -24,7 +24,11 @@ export async function GET(request: Request) {
         };
 
         if (folderId) {
-            whereClause.folder_id = folderId;
+            if (folderId === 'root') {
+                whereClause.folder_id = null;
+            } else {
+                whereClause.folder_id = folderId;
+            }
         }
 
         if (tag) {
