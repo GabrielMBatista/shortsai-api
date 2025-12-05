@@ -63,7 +63,14 @@ export async function GET(request: Request) {
             }
         });
 
-        return NextResponse.json(folders);
+        const rootCount = await prisma.project.count({
+            where: {
+                user_id,
+                folder_id: null,
+            }
+        });
+
+        return NextResponse.json({ folders, rootCount });
     } catch (error: any) {
         console.error('Error fetching folders:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
