@@ -27,16 +27,16 @@ jobs:
             # docker-compose rm -f api || true
             
             # Build and start API service
-            docker-compose up -d --build api
+            docker-compose up -d --build shortsai-api
             
             # Wait for container to be healthy
             echo "Waiting for API to be ready..."
             sleep 10
             
             # Verify API is running
-            if ! docker-compose ps api | grep -q "Up"; then
+            if ! docker-compose ps shortsai-api | grep -q "Up"; then
               echo "ERROR: API container failed to start!"
-              docker-compose logs api --tail=100
+              docker-compose logs shortsai-api --tail=100
               exit 1
             fi
             
