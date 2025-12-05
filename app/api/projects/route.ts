@@ -208,7 +208,6 @@ export async function GET(request: Request) {
                         select: {
                             id: true,
                             scene_number: true,
-                            image_url: true,
                             image_status: true,
                             audio_status: true,
                             // video_status and others if needed for status display
