@@ -1,6 +1,6 @@
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 // Métodos para Item Individual: GET, PATCH, DELETE

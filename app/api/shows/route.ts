@@ -1,6 +1,6 @@
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth"; // Presumindo NextAuth v5
+import { auth } from "@/lib/auth"; // Presumindo NextAuth v5
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
