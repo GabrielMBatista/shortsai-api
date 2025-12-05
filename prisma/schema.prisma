@@ -7,6 +7,7 @@ datasource db {
   provider = "postgresql"
 }
 
+// ... [Enums permanecem inalterados]
 enum SubscriptionPlan {
   FREE
   PRO
@@ -71,6 +72,8 @@ enum Role {
   ADMIN
 }
 
+// ... [Auth e Plano permanecem]
+
 model User {
   id                 String           @id @default(uuid())
   name               String?
@@ -95,6 +98,7 @@ model User {
   projects    Project[]
   folders     Folder[]
   characters  Character[]
+  shows       Show[]       // NOVO RELACIONAMENTO
   usage_logs  UsageLog[]
 
   // Plan Relation
@@ -106,20 +110,18 @@ model User {
 
 model Plan {
   id          String   @id @default(uuid())
-  name        String   @unique // e.g., "Free", "Pro", "Agency"
-  slug        String   @unique // e.g., "free", "pro"
+  name        String   @unique
+  slug        String   @unique
   description String?
   price       Decimal  @default(0)
   
-  // Limits Definition
   monthly_images_limit      Int @default(10)
   monthly_videos_limit      Int @default(5)
   monthly_minutes_tts       Int @default(10)
   daily_requests_limit      Int @default(50)
   daily_videos_limit        Int @default(2)
   
-  // Features (JSON for flexibility)
-  features    Json?    // e.g. { "no_watermark": true, "priority_support": true }
+  features    Json?
   
   users       User[]
   
@@ -129,6 +131,7 @@ model Plan {
   @@map("plans")
 }
 
+// ... [Account, Session, VerificatioToken, ApiKey permanecem inalterados]
 model Account {
   id                String  @id @default(uuid())
   userId            String  @map("user_id")
@@ -187,6 +190,33 @@ model ApiKey {
   @@map("api_keys")
 }
 
+// =========================================================
+// NOVO MODEL: SHOW (Serie)
+// =========================================================
+model Show {
+  id          String   @id @default(uuid())
+  user_id     String
+  name        String
+  description String?   @db.Text
+  
+  // Identidade Visual
+  style_preset String?   // Ex: "Cinematic", "Anime"
+  visual_prompt String?  @db.Text
+  
+  // Configurações Globais
+  default_tts_provider TTSProvider @default(gemini)
+  
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  characters Character[] // Personagens deste show
+  episodes   Project[]   // Episódios (Projetos)
+
+  @@index([user_id])
+  @@map("shows")
+}
+
 model Project {
   id                            String        @id @default(uuid())
   user_id                       String
@@ -216,12 +246,18 @@ model Project {
   created_at    DateTime      @default(now())
   updated_at    DateTime      @default(now()) @updatedAt
 
+  // NOVOS CAMPOS PARA EPISÓDIOS
+  show_id        String?
+  episode_number Int?
+  show           Show?   @relation(fields: [show_id], references: [id])
+
   user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
   scenes     Scene[]
   usage_logs UsageLog[]
   characters Character[] @relation("ProjectCharacters")
 
   @@index([user_id])
+  @@index([show_id])
   @@map("projects")
 }
 
@@ -265,14 +301,16 @@ model Scene {
   created_at         DateTime    @default(now())
   deleted_at         DateTime?
 
+  // NOVO CAMPO: Voz do Personagem Específico
+  character_id String?
+  character    Character? @relation(fields: [character_id], references: [id])
+
   project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
 
-  status    String   @default("DRAFT") // DRAFT, QUEUED, GENERATING, READY, FAILED
-  version   Int      @default(0)       // Controle de concorrência
-  jobs      Job[]    // Relacionamento reverso
+  status    String   @default("DRAFT")
+  version   Int      @default(0)
+  jobs      Job[]
 
-  // Removed unique constraint to allow soft deletes with reordering
-  // @@unique([project_id, scene_number])
   @@index([project_id])
   @@index([project_id, scene_number])
   @@map("scenes")
@@ -280,15 +318,13 @@ model Scene {
 
 model Job {
   id          String   @id @default(cuid())
-  type        String   // Ex: "VIDEO_GENERATION", "TTS_GENERATION"
-  status      String   @default("QUEUED") // QUEUED, PROCESSING, COMPLETED, FAILED
+  type        String   
+  status      String   @default("QUEUED") 
   
-  // Dados para execução e resultado
-  inputPayload  Json   // O que foi enviado para gerar (prompt, settings)
-  outputResult  Json?  // O resultado (URL, duração)
+  inputPayload  Json   
+  outputResult  Json?  
   errorMessage  String?
 
-  // Relacionamentos
   projectId   String
   sceneId     String?
   scene       Scene?   @relation(fields: [sceneId], references: [id])
@@ -310,12 +346,10 @@ model UserLimits {
   current_images_used      Int      @default(0)
   last_reset_date          DateTime @default(now())
   
-  // Daily Limits (RPD)
   daily_requests_limit     Int      @default(100)
   current_daily_requests   Int      @default(0)
   last_daily_reset         DateTime @default(now())
   
-  // Daily Video Limits
   daily_videos_limit       Int      @default(1)
   current_daily_videos     Int      @default(0)
 
@@ -332,13 +366,23 @@ model Character {
   images      String[]
   created_at  DateTime @default(now())
 
+  // NOVOS CAMPOS SHOW / VOZ
+  show_id        String?
+  show           Show?   @relation(fields: [show_id], references: [id])
+  
+  voice_provider TTSProvider?
+  voice_id       String?
+  voice_settings Json?
+
   user     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   projects Project[] @relation("ProjectCharacters")
+  scenes   Scene[]   // Cenas onde ele fala
 
   @@index([user_id])
   @@map("characters")
 }
 
+// ... [UsageLog permanece]
 model UsageLog {
   id               String         @id @default(uuid())
   user_id          String?
