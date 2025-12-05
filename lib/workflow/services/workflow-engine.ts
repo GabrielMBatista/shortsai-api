@@ -51,7 +51,7 @@ export class WorkflowEngine {
             if (!scene) return;
 
             const attempts = (scene as any)[fieldAttempts] + 1;
-            const maxAttempts = 2;
+            const maxAttempts = 3;
 
             let newStatus: SceneStatus = SceneStatus.queued; // Retry by default
 

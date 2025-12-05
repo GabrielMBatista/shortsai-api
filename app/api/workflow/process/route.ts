@@ -125,7 +125,8 @@ export async function POST(request: Request) {
                 task.apiKeys
             );
 
-            return NextResponse.json({ error: error.message }, { status: 500 });
+            // Return 200 even on error so WorkflowEngine doesn't think the HTTP call failed and trigger another failure logic
+            return NextResponse.json({ success: false, error: error.message }, { status: 200 });
         }
 
     } catch (error: any) {
