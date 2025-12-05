@@ -7,7 +7,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// ... [Enums permanecem inalterados]
 enum SubscriptionPlan {
   FREE
   PRO
@@ -72,8 +71,6 @@ enum Role {
   ADMIN
 }
 
-// ... [Auth e Plano permanecem]
-
 model User {
   id                 String           @id @default(uuid())
   name               String?
@@ -98,10 +95,9 @@ model User {
   projects    Project[]
   folders     Folder[]
   characters  Character[]
-  shows       Show[]       // NOVO RELACIONAMENTO
+  shows       Show[]
   usage_logs  UsageLog[]
 
-  // Plan Relation
   plan_id       String?
   plan          Plan?    @relation(fields: [plan_id], references: [id])
 
@@ -131,7 +127,6 @@ model Plan {
   @@map("plans")
 }
 
-// ... [Account, Session, VerificatioToken, ApiKey permanecem inalterados]
 model Account {
   id                String  @id @default(uuid())
   userId            String  @map("user_id")
@@ -190,28 +185,23 @@ model ApiKey {
   @@map("api_keys")
 }
 
-// =========================================================
-// NOVO MODEL: SHOW (Serie)
-// =========================================================
 model Show {
   id          String   @id @default(uuid())
   user_id     String
   name        String
   description String?   @db.Text
-  
-  // Identidade Visual
-  style_preset String?   // Ex: "Cinematic", "Anime"
+
+  style_preset String?
   visual_prompt String?  @db.Text
-  
-  // Configurações Globais
+
   default_tts_provider TTSProvider @default(gemini)
   
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
   user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  characters Character[] // Personagens deste show
-  episodes   Project[]   // Episódios (Projetos)
+  characters Character[]
+  episodes   Project[]
 
   @@index([user_id])
   @@map("shows")
@@ -246,7 +236,7 @@ model Project {
   created_at    DateTime      @default(now())
   updated_at    DateTime      @default(now()) @updatedAt
 
-  // NOVOS CAMPOS PARA EPISÓDIOS
+
   show_id        String?
   episode_number Int?
   show           Show?   @relation(fields: [show_id], references: [id])
@@ -301,7 +291,7 @@ model Scene {
   created_at         DateTime    @default(now())
   deleted_at         DateTime?
 
-  // NOVO CAMPO: Voz do Personagem Específico
+
   character_id String?
   character    Character? @relation(fields: [character_id], references: [id])
 
@@ -366,7 +356,7 @@ model Character {
   images      String[]
   created_at  DateTime @default(now())
 
-  // NOVOS CAMPOS SHOW / VOZ
+
   show_id        String?
   show           Show?   @relation(fields: [show_id], references: [id])
   
@@ -376,13 +366,13 @@ model Character {
 
   user     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   projects Project[] @relation("ProjectCharacters")
-  scenes   Scene[]   // Cenas onde ele fala
+  scenes   Scene[]
 
   @@index([user_id])
   @@map("characters")
 }
 
-// ... [UsageLog permanece]
+
 model UsageLog {
   id               String         @id @default(uuid())
   user_id          String?
