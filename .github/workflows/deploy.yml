@@ -22,12 +22,8 @@ jobs:
             # Pull latest changes
             git pull origin main || git pull origin master
             
-            # Stop and remove ONLY the API container (optional, but good for clean slate)
-            docker-compose stop shortsai-api || true
-            docker-compose rm -f shortsai-api || true
-            
-            # Build and start API service
-            docker-compose up -d --build --remove-orphans shortsai-api
+            # Build and start ALL services to ensure network consistency
+            docker-compose up -d --build --remove-orphans
             
             # Wait for container to be healthy
             echo "Waiting for API to be ready..."

@@ -3,6 +3,7 @@ FROM node:22-slim AS base
 
 # Install dependencies only when needed
 FROM base AS deps
+RUN apt-get update -y && apt-get install -y openssl ca-certificates
 WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
@@ -23,6 +24,7 @@ RUN npm run build
 
 # Production image, copy all the files and run next
 FROM base AS runner
+RUN apt-get update -y && apt-get install -y openssl ca-certificates
 WORKDIR /app
 
 ENV NODE_ENV=production
