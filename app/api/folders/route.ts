@@ -58,7 +58,11 @@ export async function GET(request: Request) {
             orderBy: { name: 'asc' },
             include: {
                 _count: {
-                    select: { projects: true }
+                    select: {
+                        projects: {
+                            where: { is_archived: false }
+                        }
+                    }
                 }
             }
         });
@@ -67,6 +71,7 @@ export async function GET(request: Request) {
             where: {
                 user_id,
                 folder_id: null,
+                is_archived: false
             }
         });
 
