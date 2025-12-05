@@ -19,11 +19,11 @@ jobs:
             # Navigate to the API project folder
             cd ${{ secrets.VPS_API_PATH }}
             
-            # Pull latest changes
-            git pull origin main || git pull origin master
+            # Full stack reset to ensure clean network and DNS
+            docker-compose down --remove-orphans || true
             
-            # Build and start ALL services to ensure network consistency
-            docker-compose up -d --build --remove-orphans
+            # Build and start ALL services
+            docker-compose up -d --build
             
             # Wait for container to be healthy
             echo "Waiting for API to be ready..."
