@@ -73,7 +73,19 @@ export async function GET(
                         // Excluding: image_url, audio_url, video_url, sfx_url
                     }
                 },
-                characters: true,
+                characters: {
+                    select: {
+                         id: true,
+                         name: true,
+                         description: true,
+                         // images: true // Include images? If they are small, ok. If base64, careful.
+                         // Usually character images are needed for context, but if they are large base64...
+                         // Let's assume they are needed for now as there is no lazy load for characters yet.
+                         images: true,
+                         user_id: true,
+                         created_at: true
+                    }
+                },
             },
         });
 
