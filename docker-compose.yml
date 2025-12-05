@@ -4,17 +4,14 @@ services:
   db:
     image: postgres:15-alpine
     container_name: shortsai-db
-    # Removemos 'profiles' para garantir que suba sempre
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres} # IMPORTANTE: Mude isso no .env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-shortsai}
     volumes:
-      # MUDANÇA: Mapeando para uma pasta local './pgdata' no VPS.
-      # Facilita backup: é só copiar essa pasta.
       - ./pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432" # Atenção: Configure o Firewall (UFW) no VPS!
+      - "5432:5432"
     restart: always
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
@@ -24,25 +21,30 @@ services:
     networks:
       - shortsai-network
 
-  api:
+  # --- MUDANÇA AQUI: De 'api' para 'shortsai-api' ---
+  shortsai-api:
+    container_name: shortsai-api # Força o nome do container
     build:
       context: .
       dockerfile: Dockerfile
     env_file:
       - .env
     environment:
-      # MUDANÇA: DATABASE_URL interna usa o nome do serviço 'db'
+      # Ajuste na URL interna também para garantir
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-shortsai}
-      # Demais variáveis...
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:80}
+      AUTH_SECRET: ${AUTH_SECRET:-supersecret}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3333/api/auth}
     ports:
       - "3333:3333"
     restart: always
     depends_on:
       db:
-        condition: service_healthy # Só inicia quando o banco estiver pronto
+        condition: service_healthy
     networks:
-      - shortsai-network
-
+      shortsai-network:
+        aliases:
+          - shortsai-api # Cria um apelido na rede para o Nginx achar
 networks:
   shortsai-network:
     driver: bridge
