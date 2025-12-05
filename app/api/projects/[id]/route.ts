@@ -19,8 +19,60 @@ export async function GET(
         const { id } = await params;
         const project = await prisma.project.findUnique({
             where: { id },
-            include: {
-                scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } },
+            select: {
+                id: true,
+                user_id: true,
+                topic: true,
+                style: true,
+                language: true,
+                voice_name: true,
+                tts_provider: true,
+                video_model: true,
+                audio_model: true,
+                include_music: true,
+                bg_music_prompt: true,
+                bg_music_status: true,
+                status: true,
+                generated_title: true,
+                generated_description: true,
+                duration_config: true,
+                lock_session_id: true,
+                lock_expires_at: true,
+                is_archived: true,
+                tags: true,
+                folder_id: true,
+                created_at: true,
+                updated_at: true,
+                // Excluding heavy base64 fields: reference_image_url, bg_music_url, etc.
+                
+                scenes: {
+                    where: { deleted_at: null },
+                    orderBy: { scene_number: 'asc' },
+                    select: {
+                        id: true,
+                        project_id: true,
+                        scene_number: true,
+                        visual_description: true,
+                        narration: true,
+                        duration_seconds: true,
+                        image_status: true,
+                        audio_status: true,
+                        sfx_status: true,
+                        video_status: true,
+                        media_type: true,
+                        word_timings: true,
+                        error_message: true,
+                        image_attempts: true,
+                        audio_attempts: true,
+                        sfx_attempts: true,
+                        video_attempts: true,
+                        created_at: true,
+                        deleted_at: true,
+                        status: true,
+                        version: true
+                        // Excluding: image_url, audio_url, video_url, sfx_url
+                    }
+                },
                 characters: true,
             },
         });

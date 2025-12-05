@@ -209,8 +209,10 @@ export async function GET(request: Request) {
                             id: true,
                             scene_number: true,
                             image_status: true,
-                            image_url: true,
-                            audio_status: true
+                            audio_status: true,
+                            // video_status and others if needed for status display
+                            video_status: true, 
+                            media_type: true
                         },
                         orderBy: { scene_number: 'asc' }
                     }
