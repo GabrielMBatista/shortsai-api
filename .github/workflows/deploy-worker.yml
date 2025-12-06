@@ -12,7 +12,7 @@ env:
   PROJECT_ID: idyllic-chimera-366121 # <-- SEU PROJECT ID
   REGION: us-central1
   SERVICE_NAME: shortsai-worker
-  IMAGE_NAME: us-central1-docker.pkg.dev/idyllic-chimera-366121/cloud-run-source-deploy/shortsai-worker
+  IMAGE_NAME: gcr.io/idyllic-chimera-366121/shortsai-worker
 
 jobs:
   deploy-worker:
@@ -29,8 +29,8 @@ jobs:
       - name: Setup Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for AR
-        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker gcr.io --quiet
 
       - name: Build Docker Image
         run: |
