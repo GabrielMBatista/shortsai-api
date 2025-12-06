@@ -220,13 +220,20 @@ class RenderEngine:
         
         return base_clip
 
-    def render(self, job_payload):
+    def render(self, job_payload, progress_callback=None):
         scenes_data = job_payload.get('scenes', [])
+        total_scenes = len(scenes_data)
         clips = []
 
         print("Processing scenes...")
         for i, scene in enumerate(scenes_data):
-            print(f"  - Scene {i+1}/{len(scenes_data)}")
+            print(f"  - Scene {i+1}/{total_scenes}")
+            
+            # Report progress (0-80% allocated for scene processing)
+            if progress_callback:
+                progress = int((i / total_scenes) * 80)
+                progress_callback(progress)
+                
             try:
                 clip = self.create_scene_clip(scene)
                 clips.append(clip)
@@ -236,6 +243,9 @@ class RenderEngine:
 
         if not clips:
             raise ValueError("No valid scenes to render")
+            
+        if progress_callback:
+            progress_callback(80) # Scenes done
 
         final_clip = concatenate_videoclips(clips, method="compose")
 
@@ -265,6 +275,9 @@ class RenderEngine:
         output_path = os.path.join(self.temp_dir, output_filename)
 
         print(f"Rendering to {output_path}...")
+        
+        if progress_callback: progress_callback(90)
+        
         # Preset slow = better compression/quality. Bitrate for 1080p vertical.
         final_clip.write_videofile(
             output_path, 
@@ -282,6 +295,7 @@ class RenderEngine:
 
         # Upload
         print("Uploading to R2...")
+        if progress_callback: progress_callback(95)
         public_url = self.upload_file(output_path, f"renders/{output_filename}")
         
         # Cleanup temp file

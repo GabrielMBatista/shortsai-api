@@ -46,12 +46,12 @@ def get_r2_config():
         'public_url': os.getenv('NEXT_PUBLIC_STORAGE_URL') or os.getenv('R2_PUBLIC_URL', 'https://pub-your-id.r2.dev') 
     }
 
-def process_job(job):
+def process_job(job, progress_callback=None):
     print(f"Processing job {job['id']}...")
     engine = None
     try:
         engine = RenderEngine(get_r2_config())
-        url = engine.render(job['payload'])
+        url = engine.render(job['payload'], progress_callback=progress_callback)
         engine.cleanup()
         return url
     except Exception as e:
@@ -87,10 +87,12 @@ def main_loop():
                     break
             
             if job:
+                start_ts = time.time()
                 # MARK PROCESSING
                 print(f"Claiming job {job['id']}...")
                 queue[job_idx]['status'] = 'processing'
-                queue[job_idx]['startedAt'] = time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                queue[job_idx]['startedAt'] = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(start_ts))
+                queue[job_idx]['progress'] = 0
                 
                 try:
                     with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
@@ -100,13 +102,40 @@ def main_loop():
                     time.sleep(1)
                     continue
                 
+                # Progress Callback
+                def update_progress(percent):
+                    try:
+                        elapsed = time.time() - start_ts
+                        eta = 0
+                        if percent > 0:
+                            total_estimated = elapsed / (percent / 100.0)
+                            eta = int(total_estimated - elapsed)
+                        
+                        # Read fresh queue
+                        with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
+                            current_q = json.load(f)
+                        
+                        # Update specific job
+                        for item in current_q:
+                            if item['id'] == job['id']:
+                                item['progress'] = percent
+                                item['eta'] = eta
+                                break
+                        
+                        with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
+                            json.dump(current_q, f, indent=2)
+                        
+                        print(f"Job {job['id']} Progress: {percent}% (ETA: {eta}s)")
+                    except Exception as e:
+                        print(f"Error updating progress: {e}")
+
                 # EXECUTE
                 status = 'failed'
                 result_url = None
                 error_msg = None
                 
                 try:
-                    result_url = process_job(job)
+                    result_url = process_job(job, progress_callback=update_progress)
                     status = 'completed'
                 except Exception as e:
                     status = 'failed'
