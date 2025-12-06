@@ -46,7 +46,8 @@ async function processJob(jobId: string) {
         }
 
         // Call the existing VideoService
-        const videoUrl = await VideoService.generateVideo(
+        // Call the existing VideoService
+        let videoUrl = await VideoService.generateVideo(
             userId,
             imageUrl,
             prompt,
@@ -54,6 +55,24 @@ async function processJob(jobId: string) {
             modelId,
             withAudio
         );
+        
+        // Upload to R2 to avoid saving Base64 in DB
+        try {
+            const { uploadBase64ToR2 } = await import("@/lib/storage");
+            if (videoUrl.startsWith('data:')) {
+                console.log('[Job Runner] Uploading generated video to R2...');
+                const r2Url = await uploadBase64ToR2(videoUrl, 'scenes/videos');
+                if (r2Url) {
+                    console.log('[Job Runner] Video uploaded to:', r2Url);
+                    videoUrl = r2Url;
+                }
+            }
+        } catch (error) {
+            console.error('[Job Runner] Failed to upload video to R2:', error);
+            // Continue with base64 if upload fails, or throw? 
+            // Better to keep base64 than lose data, but DB might reject if too large.
+            // Let's proceed, as the user emphasized "recovering" (reading), but saving is also important.
+        }
         // -------------------------------------
 
         // Transação Atômica: Atualiza Job E Cena juntos

@@ -32,8 +32,23 @@ export class VideoService {
             await RateLimiter.checkVideoRateLimits(userId, modelId);
         }
 
-        const base64Data = imageUrl.split(',')[1];
-        const mimeType = imageUrl.match(/data:([^;]+);/)?.[1] || 'image/jpeg';
+        let base64Data = '';
+        let mimeType = 'image/jpeg';
+
+        if (imageUrl.startsWith('http')) {
+            console.log(`[VideoService] Fetching image from URL: ${imageUrl}`);
+            const response = await fetch(imageUrl);
+            if (!response.ok) throw new Error(`Failed to fetch input image: ${response.statusText}`);
+            const arrayBuffer = await response.arrayBuffer();
+            base64Data = Buffer.from(arrayBuffer).toString('base64');
+            mimeType = response.headers.get('content-type') || 'image/jpeg';
+        } else if (imageUrl.startsWith('data:')) {
+            base64Data = imageUrl.split(',')[1];
+            mimeType = imageUrl.match(/data:([^;]+);/)?.[1] || 'image/jpeg';
+        } else {
+            // Assume raw base64 or invalid?
+            throw new Error("[VideoService] Invalid image format. Must be Data URI or HTTP URL.");
+        }
 
         let selectedModel = modelId;
         if (selectedModel === 'veo') selectedModel = 'veo-2.0-generate-001';
@@ -77,7 +92,7 @@ export class VideoService {
             animationPrompt = prompt.substring(0, 100);
         }
 
-        return executeRequest(isSystem, async () => {
+        const generatedVideo = await executeRequest(isSystem, async () => {
             console.log(`[AIService] Generating video with ${selectedModel} for user ${userId}`);
 
             // Use REST API predictLongRunning
@@ -130,6 +145,22 @@ export class VideoService {
 
             return videoUrl;
         }, userId);
+
+        // Upload to R2 if base64 (Centralized storage logic)
+        if (generatedVideo.startsWith('data:')) {
+            try {
+                const { uploadBase64ToR2 } = await import('@/lib/storage');
+                const r2Url = await uploadBase64ToR2(generatedVideo, 'scenes/videos');
+                if (r2Url) {
+                    console.log(`[VideoService] Uploaded generated video to R2: ${r2Url}`);
+                    return r2Url;
+                }
+            } catch (e) {
+                console.error("[VideoService] Failed to upload to R2, returning Base64", e);
+            }
+        }
+
+        return generatedVideo;
     }
 
     private static async pollVeoOperation(operationName: string, apiKey: string): Promise<string> {
@@ -169,7 +200,7 @@ export class VideoService {
                     throw new Error('No video URL in completed operation');
                 }
 
-                // Download the video and convert to base64
+                // Download the video
                 console.log(`[AIService] Downloading video from ${videoUri}`);
                 const videoResponse = await fetch(videoUri, {
                     headers: {
@@ -182,9 +213,19 @@ export class VideoService {
                 }
 
                 const videoBuffer = await videoResponse.arrayBuffer();
-                const base64Video = Buffer.from(videoBuffer).toString('base64');
+                const buffer = Buffer.from(videoBuffer);
 
-                return `data:video/mp4;base64,${base64Video}`;
+                // Upload directly to R2
+                try {
+                    const { uploadBufferToR2 } = await import('@/lib/storage');
+                    const r2Url = await uploadBufferToR2(buffer, 'video/mp4', 'scenes/videos');
+                    console.log(`[VideoService] Uploaded generated video to R2 (native mp4): ${r2Url}`);
+                    return r2Url;
+                } catch (e) {
+                    console.error("[VideoService] Failed to upload to R2, returning Base64 fallback", e);
+                    const base64Video = buffer.toString('base64');
+                    return `data:video/mp4;base64,${base64Video}`;
+                }
             }
         }
 
