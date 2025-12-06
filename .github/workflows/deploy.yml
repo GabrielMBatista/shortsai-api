@@ -40,16 +40,13 @@ jobs:
             echo "⏳ Waiting for services to stabilize..."
             sleep 15
             
-            # Apply Database Schema Changes (using local binary to avoid npx permissions issues)
+            # Apply Database Schema Changes (using global binary)
             echo "🚀 Running Database Migration..."
-            if docker-compose exec -T shortsai-api ./node_modules/.bin/prisma db push; then
+            if docker-compose exec -T shortsai-api prisma db push; then
                 echo "✅ Database schema updated."
             else
-                echo "⚠️ Database migration failed or not needed."
-                # Don't fail the build immediately, maybe just logging? 
-                # Actually, if db schema is wrong, app breaks. Better to show error but maybe not exit 1 if it's just a connection blip?
-                # Let's keep it critical.
-                # exit 1 
+                echo "⚠️ Database migration failed."
+                # Don't fail the build immediately, but log it
             fi
 
             # Wait for API to be ready
