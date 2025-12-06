@@ -19,6 +19,9 @@ jobs:
             # Navigate to the API project folder
             cd ${{ secrets.VPS_API_PATH }}
             
+            # Pull latest code from repository
+            git pull origin master
+            
             # Full stack reset to ensure clean network and DNS
             docker-compose down --remove-orphans || true
             
