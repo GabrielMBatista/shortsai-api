@@ -41,12 +41,39 @@ export async function GET(
                     archive.append(Buffer.from(arrayBuffer), { name });
                 } else {
                     console.error(`Failed to fetch ${url}: ${response.statusText}`);
-                    // Don't append error files to keep structure clean, just log
                 }
             } catch (e) {
                 console.error(`Error fetching ${url}:`, e);
             }
         };
+
+        // Helper to extract extension
+        const getExtension = (urlStr: string, defaultExt: string, allowed: string[]) => {
+            try {
+                const urlPath = new URL(urlStr).pathname;
+                const possibleExt = urlPath.split('.').pop();
+                if (possibleExt && allowed.includes(possibleExt.toLowerCase())) {
+                    return possibleExt.toLowerCase();
+                }
+            } catch (e) { }
+            return defaultExt;
+        };
+
+        // Handle Background Music
+        let bgMusicPath = null;
+        if (project.bg_music_url) {
+            const ext = getExtension(project.bg_music_url, 'mp3', ['mp3', 'wav', 'm4a']);
+            bgMusicPath = `audio/background.${ext}`;
+            assetPromises.push(fetchAndAppend(project.bg_music_url, bgMusicPath));
+        }
+
+        // Handle Reference Image
+        let refImagePath = null;
+        if (project.reference_image_url) {
+            const ext = getExtension(project.reference_image_url, 'png', ['png', 'jpg', 'jpeg', 'webp']);
+            refImagePath = `images/reference.${ext}`;
+            assetPromises.push(fetchAndAppend(project.reference_image_url, refImagePath));
+        }
 
         for (const scene of project.scenes) {
             const sceneId = `scene_${scene.scene_number.toString().padStart(2, '0')}`;
@@ -54,32 +81,23 @@ export async function GET(
             // Determine extensions
             let imgExt = 'png';
             if (scene.image_url) {
-                try {
-                    const urlPath = new URL(scene.image_url).pathname;
-                    const possibleExt = urlPath.split('.').pop();
-                    if (possibleExt && ['png', 'jpg', 'jpeg'].includes(possibleExt.toLowerCase())) {
-                        imgExt = possibleExt;
-                    }
-                } catch (e) { }
+                imgExt = getExtension(scene.image_url, 'png', ['png', 'jpg', 'jpeg', 'webp']);
             }
 
             let audioExt = 'mp3';
             if (scene.audio_url) {
-                try {
-                    const urlPath = new URL(scene.audio_url).pathname;
-                    const possibleExt = urlPath.split('.').pop();
-                    if (possibleExt && ['mp3', 'wav'].includes(possibleExt.toLowerCase())) {
-                        audioExt = possibleExt;
-                    }
-                } catch (e) { }
+                audioExt = getExtension(scene.audio_url, 'mp3', ['mp3', 'wav', 'm4a']);
             }
 
             // Add to project.json scenes list
             projectJsonScenes.push({
                 id: sceneId,
+                text: scene.narration,
                 prompt: scene.visual_description || `Scene ${scene.scene_number}`,
-                audio: `audio/${sceneId}.${audioExt}`,
-                image: `images/${sceneId}.${imgExt}`
+                duration: scene.duration_seconds,
+                audio: scene.audio_url ? `audio/${sceneId}.${audioExt}` : null,
+                image: scene.image_url ? `images/${sceneId}.${imgExt}` : null,
+                video: scene.video_url || null
             });
 
             // Queue downloads
@@ -92,8 +110,25 @@ export async function GET(
         }
 
         const projectJson = {
+            id: project.id,
             projectName: project.generated_title || project.topic || "Untitled Project",
-            scenes: projectJsonScenes
+            topic: project.topic,
+            style: project.style,
+            settings: {
+                language: project.language,
+                voiceName: project.voice_name,
+                ttsProvider: project.tts_provider,
+                videoModel: project.video_model,
+                audioModel: project.audio_model,
+                includeMusic: project.include_music
+            },
+            backgroundMusic: bgMusicPath,
+            referenceImage: refImagePath,
+            scenes: projectJsonScenes,
+            metadata: {
+                exportedAt: new Date().toISOString(),
+                version: "1.0"
+            }
         };
 
         // Append project.json
