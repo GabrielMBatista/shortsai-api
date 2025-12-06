@@ -2,6 +2,9 @@
 # Use Python Slim
 FROM python:3.9-slim
 
+# Force stdout logging
+ENV PYTHONUNBUFFERED=1
+
 # Install system dependencies for MoviePy/ImageMagick
 RUN apt-get update && apt-get install -y \
     ffmpeg \

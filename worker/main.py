@@ -43,7 +43,7 @@ class RenderRequest(BaseModel):
     webhook_url: Optional[str] = None
     webhook_token: Optional[str] = None
 
-def send_webhook(url: str, token: str | None, data: dict):
+def send_webhook(url: str, token: Optional[str], data: dict):
     if not url:
         return
     try:
