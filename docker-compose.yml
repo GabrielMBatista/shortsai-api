@@ -41,6 +41,7 @@ services:
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://srv1161960.hstgr.cloud}
       AUTH_SECRET: ${AUTH_SECRET:-supersecret}
       AUTH_URL: ${AUTH_URL:-http://srv1161960.hstgr.cloud:3333/api/auth}
+      QUEUE_PATH: /app/data/queue.json
     ports:
       - "3333:3333"
     restart: always
@@ -51,10 +52,42 @@ services:
       shortsai-network:
         aliases:
           - shortsai-api # O Nginx vai procurar por este nome exato
+    volumes:
+      - shortsai_data:/app/data
 
-# ==============================
-# DEFINIÇÃO DA REDE (Criação)
-# ==============================
+  # ==============================
+  # WORKER (Python Video Renderer)
+  # ==============================
+  worker:
+    container_name: shortsai-worker
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      # Map Queue Path to shared volume
+      QUEUE_PATH_WORKER: /app/data/queue.json
+      # Pass R2 credentials explicitly if needed, or rely on .env
+      R2_ENDPOINT: ${R2_ENDPOINT}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL}
+    volumes:
+      - shortsai_data:/app/data
+    restart: always
+    depends_on:
+      - shortsai-api # Wait for API to maybe create the queue file? Or independent.
+    networks:
+      - shortsai-network
+
+volumes:
+  shortsai_data:
+
+    # ==============================
+    # DEFINIÇÃO DA REDE (Criação)
+    # ==============================
 networks:
   shortsai-network:
     driver: bridge
