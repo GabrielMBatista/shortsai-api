@@ -89,6 +89,18 @@ async def render_video(job: RenderRequest):
         url = engine.render(payload_dict, progress_callback=progress_callback)
         engine.cleanup()
         
+        # Send completion webhook
+        if job.webhook_url:
+            send_webhook(
+                job.webhook_url,
+                job.webhook_token,
+                {
+                    "jobId": job.id,
+                    "status": "completed",
+                    "resultUrl": url
+                }
+            )
+        
         return {
             "status": "completed",
             "resultUrl": url
@@ -104,6 +116,18 @@ async def render_video(job: RenderRequest):
             if 'engine' in locals(): engine.cleanup()
         except:
             pass
+
+        # Send failure webhook
+        if job.webhook_url:
+            send_webhook(
+                job.webhook_url,
+                job.webhook_token,
+                {
+                    "jobId": job.id,
+                    "status": "failed",
+                    "error": str(e)
+                }
+            )
 
         # Return error (FastAPI will return 200 with error info or 500?)
         # Since we want to update the caller, we return status dict
