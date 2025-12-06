@@ -25,4 +25,4 @@ COPY . .
 # Environment variables will be injected by docker-compose
 # QUEUE file path should be mapped via volume
 
-CMD ["python", "-u", "main.py"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

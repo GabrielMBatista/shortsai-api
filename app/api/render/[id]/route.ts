@@ -1,9 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-
-const QUEUE_PATH = process.env.QUEUE_PATH || path.join(process.cwd(), 'queue.json');
+import { prisma } from '@/lib/prisma';
 
 export async function GET(
     req: NextRequest,
@@ -13,27 +10,36 @@ export async function GET(
         const params = await context.params;
         const { id } = params;
 
-        if (!fs.existsSync(QUEUE_PATH)) {
-            return NextResponse.json({ error: 'Queue empty' }, { status: 404 });
-        }
-
-        const fileContent = fs.readFileSync(QUEUE_PATH, 'utf-8');
-        let queue = [];
-        try {
-            queue = JSON.parse(fileContent);
-        } catch (e) {
-            return NextResponse.json({ error: 'Queue invalid' }, { status: 500 });
-        }
-
-        const job = queue.find((j: any) => j.id === id);
+        const job = await prisma.job.findUnique({
+            where: { id }
+        });
 
         if (!job) {
             return NextResponse.json({ error: 'Job not found' }, { status: 404 });
         }
 
-        return NextResponse.json(job);
+        // Map Prisma Job to Frontend Expected Shape
+        const output = job.outputResult as any || {};
+
+        const response: any = {
+            id: job.id,
+            status: job.status,
+            progress: output.progress || 0, // Read from JSON
+            eta: output.eta || null,
+        };
+
+        if (output.url) {
+            response.resultUrl = output.url;
+        }
+
+        if (job.errorMessage) {
+            response.error = job.errorMessage;
+        }
+
+        return NextResponse.json(response);
 
     } catch (e: any) {
+        console.error("Get Job Error", e);
         return NextResponse.json({ error: 'Server error: ' + e.message }, { status: 500 });
     }
 }

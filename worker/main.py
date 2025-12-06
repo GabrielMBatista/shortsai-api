@@ -1,34 +1,20 @@
 
+import os
 import json
 import time
-import os
-import sys
+import requests
+from fastapi import FastAPI, HTTPException, Body, BackgroundTasks
+from pydantic import BaseModel
+from typing import List, Optional, Any
 from dotenv import load_dotenv
 from render_engine import RenderEngine
 
 # Load Env
 load_dotenv()
-# Also try loading from API folder if needed
+# Also try loading from API folder if needed (for local dev)
 load_dotenv('../shortsai-api/.env')
 
-# Load Env
-load_dotenv()
-
-# QUEUE PATH configuration
-# In Docker, we will mount the queue file/dir to a shared location
-# Default to local relative path for development
-DEFAULT_QUEUE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'queue.json')
-QUEUE_FILE = os.getenv('QUEUE_PATH_WORKER', DEFAULT_QUEUE_PATH)
-
-# Fix permissions for shared volume (Docker only)
-# API runs as UID 1001, Worker runs as root. Worker gives permission to API.
-if os.path.exists('/app/data'):
-    try:
-        print("Fixing permissions for /app/data to 1001:1001...")
-        os.system("chown -R 1001:1001 /app/data")
-        os.system("chmod -R 775 /app/data")
-    except Exception as e:
-        print(f"Failed to set permissions: {e}")
+app = FastAPI(title="ShortsAI Worker")
 
 def get_r2_config():
     account_id = os.getenv('R2_ACCOUNT_ID')
@@ -46,135 +32,85 @@ def get_r2_config():
         'public_url': os.getenv('NEXT_PUBLIC_STORAGE_URL') or os.getenv('R2_PUBLIC_URL', 'https://pub-your-id.r2.dev') 
     }
 
-def process_job(job, progress_callback=None):
-    print(f"Processing job {job['id']}...")
-    engine = None
+class RenderPayload(BaseModel):
+    projectId: str
+    scenes: List[Any]
+    bgMusicUrl: Optional[str] = None
+
+class RenderRequest(BaseModel):
+    id: str  # Job ID
+    payload: RenderPayload
+    webhook_url: Optional[str] = None
+    webhook_token: Optional[str] = None
+
+def send_webhook(url: str, token: str | None, data: dict):
+    if not url:
+        return
     try:
-        engine = RenderEngine(get_r2_config())
-        url = engine.render(job['payload'], progress_callback=progress_callback)
-        engine.cleanup()
-        return url
+        headers = {'Content-Type': 'application/json'}
+        if token:
+            headers['Authorization'] = f"Bearer {token}"
+        # Fire and forget (ish) - we don't want to block rendering too much if webhook is slow
+        # but for simplicity we just request properly
+        print(f"Sending webhook to {url}: {data.get('status')}")
+        requests.post(url, json=data, headers=headers, timeout=5)
     except Exception as e:
-        print(f"Job failed: {e}")
-        if engine: 
-            engine.cleanup() 
-        raise e
+        print(f"Webhook failed: {e}")
 
-def main_loop():
-    print(f"Worker started. Monitoring queue at {QUEUE_FILE}...")
-    while True:
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+@app.post("/render")
+async def render_video(job: RenderRequest):
+    print(f"Received render job: {job.id}")
+    
+    # Define progress callback
+    def progress_callback(percent):
+        if job.webhook_url:
+            send_webhook(
+                job.webhook_url, 
+                job.webhook_token, 
+                {
+                    "jobId": job.id,
+                    "status": "processing",
+                    "progress": percent
+                }
+            )
+
+    try:
+        # Initialize Engine
+        engine = RenderEngine(get_r2_config())
+        
+        # Start Processing
+        # Converting pydantic model to dict for engine
+        payload_dict = job.payload.dict()
+        
+        url = engine.render(payload_dict, progress_callback=progress_callback)
+        engine.cleanup()
+        
+        return {
+            "status": "completed",
+            "resultUrl": url
+        }
+
+    except Exception as e:
+        print(f"Render failed: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Cleanup
         try:
-            if not os.path.exists(QUEUE_FILE):
-                print(f"Queue file not found at {QUEUE_FILE}, waiting...")
-                time.sleep(5)
-                continue
+            if 'engine' in locals(): engine.cleanup()
+        except:
+            pass
 
-            # Read Queue safely
-            with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
-                try:
-                    queue = json.load(f)
-                except json.JSONDecodeError:
-                    print("Queue file is empty or invalid JSON")
-                    queue = []
-            
-            # Find Pending Job
-            job_idx = -1
-            job = None
-            for i, j in enumerate(queue):
-                if j.get('status') == 'pending' and j.get('type') == 'render_video':
-                    job_idx = i
-                    job = j
-                    break
-            
-            if job:
-                start_ts = time.time()
-                # MARK PROCESSING
-                print(f"Claiming job {job['id']}...")
-                queue[job_idx]['status'] = 'processing'
-                queue[job_idx]['startedAt'] = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(start_ts))
-                queue[job_idx]['progress'] = 0
-                
-                try:
-                    with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
-                        json.dump(queue, f, indent=2)
-                except Exception as e:
-                    print("Failed to lock/write queue, skipping...")
-                    time.sleep(1)
-                    continue
-                
-                # Progress Callback
-                def update_progress(percent):
-                    try:
-                        elapsed = time.time() - start_ts
-                        eta = 0
-                        if percent > 0:
-                            total_estimated = elapsed / (percent / 100.0)
-                            eta = int(total_estimated - elapsed)
-                        
-                        # Read fresh queue
-                        with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
-                            current_q = json.load(f)
-                        
-                        # Update specific job
-                        for item in current_q:
-                            if item['id'] == job['id']:
-                                item['progress'] = percent
-                                item['eta'] = eta
-                                break
-                        
-                        with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
-                            json.dump(current_q, f, indent=2)
-                        
-                        print(f"Job {job['id']} Progress: {percent}% (ETA: {eta}s)")
-                    except Exception as e:
-                        print(f"Error updating progress: {e}")
-
-                # EXECUTE
-                status = 'failed'
-                result_url = None
-                error_msg = None
-                
-                try:
-                    result_url = process_job(job, progress_callback=update_progress)
-                    status = 'completed'
-                except Exception as e:
-                    status = 'failed'
-                    error_msg = str(e)
-                    import traceback
-                    traceback.print_exc()
-
-                # UPDATE STATUS (Re-read to ensure we don't clobber other new jobs)
-                with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
-                    current_queue = json.load(f)
-                
-                # Find job again
-                found = False
-                for item in current_queue:
-                    if item['id'] == job['id']:
-                        item['status'] = status
-                        item['completedAt'] = time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
-                        if result_url:
-                            item['resultUrl'] = result_url
-                        if error_msg:
-                            item['error'] = error_msg
-                        found = True
-                        break
-                
-                if found:
-                    with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
-                        json.dump(current_queue, f, indent=2)
-                    print(f"Job {job['id']} finished with status: {status}")
-                else:
-                    print("Job disappeared from queue while processing??")
-
-            else:
-                time.sleep(3) # Wait before polling again
-
-        except Exception as e:
-            print(f"Main loop error: {e}")
-            import traceback
-            traceback.print_exc()
-            time.sleep(5)
-
-if __name__ == "__main__":
-    main_loop()
+        # Return error (FastAPI will return 200 with error info or 500?)
+        # Since we want to update the caller, we return status dict
+        # but also raise HTTP exception? 
+        # Better to return the error state so cloud run request completes "successfully" (HTTP 200) 
+        # but containing the error, so caller knows logic failed, not infrastructure.
+        return {
+            "status": "failed",
+            "error": str(e)
+        }
