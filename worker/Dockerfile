@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Fix ImageMagick policy (allow reading/writing rights)
-RUN sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
+# Locate policy.xml safely (can be in ImageMagick-6 or just ImageMagick)
+RUN find /etc -name "policy.xml" -exec sed -i 's/none/read,write/g' {} +
 
 WORKDIR /app
 

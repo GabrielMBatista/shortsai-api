@@ -75,7 +75,7 @@ services:
       R2_BUCKET_NAME: ${R2_BUCKET_NAME}
       NEXT_PUBLIC_STORAGE_URL: ${NEXT_PUBLIC_STORAGE_URL}
       # Optional explicit endpoint override
-      R2_ENDPOINT: ${R2_ENDPOINT}
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
     volumes:
       - shortsai_data:/app/data
     restart: always
