@@ -34,17 +34,6 @@ export class WorkflowEngine {
 
             // Update Status + DB + Broadcast in one go
             await WorkflowStateService.updateSceneStatus(projectId, sceneId, type, SceneStatus.completed, null, payload);
-
-            // Update user last_video_generated_at if it was a video task
-            if (type === 'video') {
-                const project = await prisma.project.findUnique({ where: { id: projectId }, select: { user_id: true } });
-                if (project) {
-                    await prisma.user.update({
-                        where: { id: project.user_id },
-                        data: { last_video_generated_at: new Date() } as any
-                    });
-                }
-            }
         } else {
             // Handle failure & Retry logic
             const scene = await prisma.scene.findUnique({ where: { id: sceneId } });
@@ -149,6 +138,12 @@ export class WorkflowEngine {
                         continue;
                     }
 
+                    // Update timestamp BEFORE dispatching to prevent concurrent videos
+                    await prisma.user.update({
+                        where: { id: project.user_id },
+                        data: { last_video_generated_at: new Date() } as any
+                    });
+
                     await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'video', SceneStatus.processing);
                     taskToTrigger = {
                         id: `task-${scene.id}-video-${Date.now()}`,
@@ -169,7 +164,7 @@ export class WorkflowEngine {
 
         // 2. AUTOMATIC SEQUENCE
         if (!taskToTrigger && project.status === 'generating') {
-            const isProcessing = project.scenes.some(s =>
+            const isProcessing = project.scenes.some((s: any) =>
                 s.image_status === SceneStatus.processing || s.image_status === SceneStatus.loading ||
                 s.audio_status === SceneStatus.processing || s.audio_status === SceneStatus.loading ||
                 (s as any).video_status === SceneStatus.processing || (s as any).video_status === SceneStatus.loading ||

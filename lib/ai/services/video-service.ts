@@ -24,10 +24,7 @@ export class VideoService {
         const { key: apiKey, isSystem } = await KeyManager.getGeminiKey(userId, keys?.gemini);
         console.log(`[VideoService] Using API Key: ${apiKey.substring(0, 8)}... (System Key: ${isSystem})`);
 
-        // 1. Always check cooldown (40s rule) to prevent 429s
-        // This atomically checks AND updates the timestamp if valid
-        await RateLimiter.acquireVideoSlot(userId);
-
+        // Check rate limits for system keys (daily limits, RPM)
         if (isSystem) {
             await RateLimiter.checkVideoRateLimits(userId, modelId);
         }
