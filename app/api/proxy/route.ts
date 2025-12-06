@@ -10,8 +10,14 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        const response = await fetch(url);
-        
+        const decodedUrl = decodeURIComponent(url);
+        // Double decode protection if needed, but usually once is enough for Next.js searchParams which auto-decodes once? 
+        // Actually req.nextUrl.searchParams.get() ALREADY decodes standard URI components. 
+        // If we sent it encoded, get() returns the decoded version. 
+        // If we passed a URL as a param, it should be fine.
+        // Let's log the url to be sure (if we could see logs).
+        const response = await fetch(decodedUrl);
+
         if (!response.ok) {
             return NextResponse.json({ error: `Failed to fetch resource: ${response.statusText}` }, { status: response.status });
         }
