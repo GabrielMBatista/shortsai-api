@@ -2,235 +2,78 @@
 
 > **Motor de Orquestração Backend para o ShortsAI Studio**
 
-Este é o serviço backend para o ShortsAI Studio, construído com **Next.js App Router**, **Prisma ORM** e **PostgreSQL**. Ele gerencia a orquestração de projetos, fluxos de trabalho de geração de assets, gerenciamento de usuários e atualizações em tempo real via Server-Sent Events (SSE).
+Este é o serviço backend para o ShortsAI Studio, construído com **Next.js App Router**, **Prisma ORM** e **PostgreSQL**. Ele gerencia a orquestração de projetos, fluxos de workflow e agora conta com uma arquitetura híbrida de renderização de vídeo.
 
-> **Nota de Arquitetura**: A escolha do **Next.js** para o backend foi estratégica para validar a viabilidade de hospedar um backend funcional e escalável diretamente na infraestrutura da **Vercel**, aproveitando suas capacidades de Serverless e Edge Functions.
+## 🏛️ Arquitetura Híbrida
+
+O sistema foi refatorado para alta escalabilidade:
+
+1.  **API (Next.js - VPS):** Gerencia lógica de negócios, banco de dados (PostgreSQL), usuários e SSE.
+2.  **Worker (Python - Google Cloud Run):** Microsserviço dedicado e serverless para renderização pesada de vídeos usando MoviePy + FFmpeg.
+
+A comunicação segue o fluxo:
+`Frontend -> API (Queue Job) -> Cloud Run (Render) -> Webhook (Status Update) -> API -> Frontend (SSE)`
 
 ## ✨ Funcionalidades Principais
 
-*   **Orquestração de Workflow**: Gerencia tarefas de geração complexas e em várias etapas (Roteiro -> Imagens -> Áudio -> Música) com tratamento de dependências e lógica de repetição (retry).
-*   **Controle de Concorrência**: Implementa **Bloqueio de Projeto** (`/lock` / `/unlock`) para evitar condições de corrida durante o uso em múltiplas abas ou edições rápidas.
-*   **Idempotência e Rastreamento de Uso**: O registro de uso deduplicado garante o consumo preciso da cota, mesmo com repetições de rede.
-*   **Estratégia de Monetização**: O motor de geração de roteiros (`gemini-2.5-flash`) é ajustado para produzir conteúdo estritamente entre **65s-90s** por padrão, maximizando a elegibilidade para monetização.
-*   **Atualizações em Tempo Real**: Usa **Server-Sent Events (SSE)** para enviar atualizações granulares de progresso (ex: "Gerando Imagem para a Cena 3...") para o frontend.
-*   **Arquitetura de Soft Delete**: Implementa exclusão segura para cenas e projetos usando timestamps `deleted_at`, prevenindo perda acidental de dados.
-*   **Integração Híbrida de IA**: Orquestra chamadas para o Google Gemini 2.5, ElevenLabs, Groq e outros provedores de IA.
-*   **Esquema de Banco de Dados Robusto**: Esquema PostgreSQL totalmente tipado com Prisma, suportando relações complexas (Projetos, Cenas, Personagens, Logs de Uso).
+*   **Orquestração de Workflow**: Gerencia tarefas de geração complexas (Roteiro -> Imagens -> Áudio -> Vídeo).
+*   **Worker Escalável**: Renderização de vídeos movida para o Google Cloud Run, permitindo paralelismo ilimitado e evitando travamentos na VPS.
+*   **Controle de Concorrência**: Bloqueio de projeto e filas de processamento resilientes.
+*   **Atualizações em Tempo Real**: Usa **Server-Sent Events (SSE)** para feedback instantâneo.
+*   **R2 Storage**: Armazenamento de assets (vídeos, áudios, imagens) no Cloudflare R2 com zero custo de egresso.
 
 ## 🛠️ Tech Stack
 
-*   **Framework**: Next.js 15 (App Router)
-*   **Banco de Dados**: PostgreSQL
-*   **ORM**: Prisma
-*   **Estilo de API**: REST + SSE
-*   **Linguagem**: TypeScript
+*   **API**: Next.js 15, PostgreSQL, Prisma.
+*   **Worker**: Python, FastAPI, MoviePy, Docker.
+*   **Infra**: Docker Compose (VPS), Google Cloud Run (Serverless).
 
 ## 🚀 Começando
 
 ### Pré-requisitos
-
 *   Node.js v18+
-*   Banco de Dados PostgreSQL (Local ou Cloud como Supabase/Neon)
+*   Docker & Docker Compose
 
 ### Instalação
 
-1.  Clone o repositório:
+1.  Clone o repositório e configure o `.env`:
     ```bash
-    git clone <repository-url>
-    cd shortsai-api
+    cp .env.example .env
+    # Preencha as credenciais do DB, R2 e IA.
+    # Adicione CLOUD_RUN_URL apontando para o worker (ou localhost:8080 para dev local)
     ```
 
-2.  Instale as dependências:
-    ```bash
-    npm install
-    ```
-
-3.  Configure as Variáveis de Ambiente:
-    Crie um arquivo `.env` no diretório raiz:
-    ```env
-    DATABASE_URL="postgresql://user:password@localhost:5432/shortsai"
-    NEXT_PUBLIC_APP_URL="http://localhost:3000"
-    ELEVENLABS_API_KEY="sua-chave-aqui"
-    GEMINI_API_KEY="sua-chave-aqui"
-    GROQ_API_KEY="sua-chave-aqui"
-    
-    # Cloudflare R2 Storage (para armazenamento de assets)
-    R2_ACCOUNT_ID="seu-account-id"
-    R2_ACCESS_KEY_ID="sua-access-key"
-    R2_SECRET_ACCESS_KEY="sua-secret-key"
-    R2_BUCKET_NAME="seu-bucket-name"
-    R2_PUBLIC_URL="https://pub-xxxxx.r2.dev"
-    ```
-
-4.  Inicialize o Banco de Dados:
-    ```bash
-    # Execute as migrações
-    npx prisma migrate dev
-
-    # Popule com dados iniciais (opcional)
-    npx prisma db seed
-    ```
-
-5.  Execute o Servidor de Desenvolvimento:
-    ```bash
-    npm run dev
-    ```
-
-    A API estará disponível em `http://localhost:3000`.
-
-### 🐳 Executando com Docker
-
-O projeto inclui um `docker-compose.yml` para orquestrar todo o ambiente (API, Banco de Dados e Frontend).
-
-**Nota**: O arquivo `docker-compose.yml` assume que o diretório `shortai-studio` está localizado ao lado deste diretório (`../shortai-studio`).
-
-#### 1. Configuração (Banco de Dados)
-
-*   **Opção A: Banco Externo (Produção/Padrão)**
-    Crie um arquivo `.env` neste diretório com sua `DATABASE_URL` externa. O container do banco local **não** será iniciado.
+2.  Suba o ambiente local:
     ```bash
     docker-compose up -d --build
     ```
+    Isso subirá a API (3333), o Banco (5432) e o Worker (8080) se estiver rodando localmente.
 
-*   **Opção B: Banco Local (Desenvolvimento)**
-    Para iniciar um container Postgres local junto com a aplicação:
-    ```bash
-    docker-compose --profile local up -d --build
-    ```
+## ☁️ Deploy
 
-#### 2. Serviços Disponíveis
+### API & Banco (VPS)
+O deploy da API é automatizado via **GitHub Actions** (`deploy.yml`). Ao fazer push na `master`, ele conecta na VPS via SSH, puxa o código e reinicia os containers `shortsai-api` e `db`.
 
-*   **API**: http://localhost:3333
-*   **Frontend**: http://localhost:3000
-*   **Banco (Local)**: Porta 5432
+### Worker (Google Cloud Run)
+O deploy do Worker é automatizado via **GitHub Actions** (`deploy-worker.yml`). Ao alterar arquivos na pasta `worker/`:
+1.  Constrói a imagem Docker.
+2.  Envia para o Google Artifact Registry.
+3.  Atualiza o serviço no Cloud Run.
 
-### 🚀 Deploy em VPS (Produção)
-
-Para rodar em um servidor VPS (ex: Hostinger, DigitalOcean), você deve configurar as variáveis de ambiente para apontar para o seu domínio real.
-
-1.  **Configure o `.env` no VPS**:
-    Adicione ou edite as seguintes variáveis no arquivo `.env` na mesma pasta do `docker-compose.yml`:
-    ```env
-    # URL pública do seu VPS ou Domínio
-    NEXT_PUBLIC_APP_URL=http://seu-dominio-ou-ip.com
-    
-    # URL de Autenticação (NextAuth)
-    AUTH_URL=http://seu-dominio-ou-ip.com/api/auth
-
-    # URL do Frontend (CORS)
-    FRONTEND_URL=http://seu-dominio-ou-ip.com
-    ```
-
-2.  **Atualize o Google Cloud Console**:
-    Adicione a URI de redirecionamento autorizada:
-    `http://seu-dominio-ou-ip.com/api/auth/callback/google`
-
-3.  **Inicie os Serviços**:
-    ```bash
-    docker-compose up -d --build
-    ```
-
-## 🔄 Deploy Automatizado (GitHub Actions)
-
-O projeto está configurado com GitHub Actions para deploy automático em VPS. O workflow é disparado automaticamente em push para a branch `master`.
-
-### Configuração Necessária
-
-1. **Secrets do GitHub**: Configure em `Settings > Secrets and variables > Actions`:
-   - `VPS_HOST`: IP ou domínio do VPS
-   - `VPS_USER`: Usuário SSH (geralmente `root`)
-   - `VPS_SSH_KEY`: Chave privada SSH
-   - `VPS_PORT`: Porta SSH (padrão: 22)
-   - `VPS_API_PATH`: Caminho do projeto no VPS (ex: `~/shortsai-api`)
-
-2. **Fluxo Automatizado**:
-   - ✅ Conecta no VPS via SSH
-   - ✅ Atualiza o código com `git pull`
-   - ✅ Derruba containers antigos
-   - ✅ Rebuilda com novo código
-   - ✅ Verifica se a API subiu corretamente
-
-## 💾 Cloudflare R2 Storage
-
-O projeto utiliza **Cloudflare R2** como storage para todos os assets gerados (imagens, áudios, vídeos).
-
-### Por que R2?
-- ✅ **Zero custos de egresso**: Sem cobrança por transferência de dados
-- ✅ **S3-Compatible**: Usa AWS SDK
-- ✅ **CDN Global**: Distribuição rápida de assets
-- ✅ **Escalável**: Suporta crescimento ilimitado
-
-### Configuração do R2
-
-1. Crie um bucket no [Cloudflare R2](https://developers.cloudflare.com/r2/)
-2. Gere as credenciais de acesso (API Token)
-3. Configure o domínio público para o bucket
-4. Adicione as variáveis de ambiente no `.env`:
-   ```env
-   R2_ACCOUNT_ID="seu-account-id"
-   R2_ACCESS_KEY_ID="sua-access-key"
-   R2_SECRET_ACCESS_KEY="sua-secret-key"
-   R2_BUCKET_NAME="seu-bucket-name"
-   R2_PUBLIC_URL="https://pub-xxxxx.r2.dev"
-   ```
-
-### Endpoint de Proxy `/api/assets`
-
-Para contornar problemas de CORS e melhorar o cache, a API fornece um endpoint proxy:
-
-```typescript
-// Uso no frontend
-const assetUrl = `/api/assets?url=${encodeURIComponent(r2Url)}`;
+### Configuração de Variáveis (VPS)
+No servidor de produção, o arquivo `.env` deve conter:
+```ini
+CLOUD_RUN_URL=https://shortsai-worker-xyz.run.app
+WORKER_SECRET=sua_chave_segura
 ```
-
-**Benefícios**:
-- ✅ Contorna CORS para uso com Canvas/WebCodecs
-- ✅ Cache imutável (1 ano)
-- ✅ Headers CORS configurados corretamente
-    *Nota: O deploy é automatizado via GitHub Actions para a branch `main`.*
-
+Isso garante que a API saiba para onde despachar os jobs de vídeo.
 
 ## 📚 Documentação da API
 
 ### Endpoints Principais
-
-*   **Projetos**
-    *   `GET /api/projects`: Lista projetos (filtra cenas com soft-delete).
-    *   `POST /api/projects`: Cria um novo projeto.
-    *   `GET /api/projects/[id]`: Obtém detalhes completos do projeto.
-    *   `PATCH /api/projects/[id]`: Atualiza metadados do projeto.
-
-*   **Cenas**
-    *   `PATCH /api/scenes/[id]`: Atualiza conteúdo da cena.
-    *   `DELETE /api/scenes/[id]`: Realiza soft delete em uma cena.
-
-*   **Workflow**
-    *   `POST /api/workflow/command`: Dispara ações (generate_all, regenerate_image, etc.).
-    *   `GET /api/events/[projectId]`: Endpoint SSE para status em tempo real.
-
-*   **Assets e Storage**
-    *   `GET /api/assets?url={r2_url}`: Proxy para assets do R2 Storage. Contorna problemas de CORS e melhora cache.
-    *   `POST /api/scenes/[id]/asset`: Upload de assets (imagem/áudio) para R2 Storage.
-
-*   **Usuários e Personagens**
-    *   `POST /api/users`: Sincroniza perfil de usuário.
-    *   `POST /api/characters`: Gerencia personagens consistentes.
-
-## 🛡️ Gerenciamento de Banco de Dados
-
-*   **Migração**: `npx prisma migrate dev --name <nome_da_migracao>`
-*   **Studio (GUI)**: `npx prisma studio`
-*   **Gerar Client**: `npx prisma generate` (Execute após alterações no schema)
-
-## 🔄 Arquitetura de Workflow
-
-O backend usa um padrão de **dispatcher sem estado (stateless)**.
-1.  O Frontend envia um comando (`/api/workflow/command`).
-2.  O Backend atualiza o status no DB para `queued` (na fila) ou `pending` (pendente).
-3.  O Dispatcher encontra a próxima tarefa disponível e aciona um worker em segundo plano (`/api/workflow/process`).
-4.  O Worker executa a tarefa de IA e atualiza o DB.
-5.  As atualizações são transmitidas para o frontend via SSE.
+*   `POST /api/render`: Enfileira um job de renderização.
+*   `GET /api/render/[id]`: Status do job.
+*   `POST /api/webhooks/job-status`: Webhook recebido do Worker com atualizações de progresso.
 
 ---
-
 Desenvolvido para ShortsAI Studio.
