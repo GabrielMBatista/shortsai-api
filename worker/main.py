@@ -20,6 +20,16 @@ load_dotenv()
 DEFAULT_QUEUE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'queue.json')
 QUEUE_FILE = os.getenv('QUEUE_PATH_WORKER', DEFAULT_QUEUE_PATH)
 
+# Fix permissions for shared volume (Docker only)
+# API runs as UID 1001, Worker runs as root. Worker gives permission to API.
+if os.path.exists('/app/data'):
+    try:
+        print("Fixing permissions for /app/data to 1001:1001...")
+        os.system("chown -R 1001:1001 /app/data")
+        os.system("chmod -R 775 /app/data")
+    except Exception as e:
+        print(f"Failed to set permissions: {e}")
+
 def get_r2_config():
     account_id = os.getenv('R2_ACCOUNT_ID')
     endpoint = os.getenv('R2_ENDPOINT')

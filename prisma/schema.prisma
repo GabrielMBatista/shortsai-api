@@ -282,6 +282,7 @@ model Scene {
   video_url          String?
   video_status       SceneStatus @default(draft)
   media_type         String      @default("image")
+  visual_effect      String      @default("zoom_in")
   word_timings       Json?
   error_message      String?
   image_attempts     Int         @default(0)
