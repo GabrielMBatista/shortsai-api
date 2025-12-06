@@ -33,8 +33,8 @@ jobs:
             docker run --rm -v shortsai-api_shortsai_data:/data alpine chown -R 1001:1001 /data || true
             docker run --rm -v shortsai_data:/data alpine chown -R 1001:1001 /data || true
             
-            # Build and start ALL services
-            docker-compose up -d --build
+            # Build and start ONLY API and DB (Worker is now on Google Cloud)
+            docker-compose up -d --build shortsai-api db
             
             # Wait for containers to initialize
             echo "⏳ Waiting for services to stabilize..."
