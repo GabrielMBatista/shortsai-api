@@ -151,3 +151,55 @@ const optimizeImage = async (userId: string, base64Image: string, keys: { gemini
     return data.result; // Retorna URI de dados base64
 };
 ```
+
+## 5. Proxy de Assets R2 Storage
+
+Para contornar problemas de CORS ao usar assets em Canvas ou WebCodecs (necessário para exportação de vídeo), use o endpoint de proxy.
+
+### Endpoint
+`GET /api/assets?url={r2_url_encoded}`
+
+### Por que usar?
+- ✅ **CORS**: Headers configurados corretamente para Canvas/WebCodecs
+- ✅ **Cache**: Cache imutável de 1 ano para performance
+- ✅ **Confiabilidade**: Evita erros de CORS em diferentes navegadores
+
+### Exemplo de Uso
+
+#### Convertendo URLs do R2 para URLs do Proxy
+```typescript
+const getProxiedUrl = (r2Url: string) => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    return `${apiUrl}/api/assets?url=${encodeURIComponent(r2Url)}`;
+};
+
+// Uso em componente
+const scene = {
+    imageUrl: 'https://pub-xxxxx.r2.dev/scenes/images/abc123.png',
+    audioUrl: 'https://pub-xxxxx.r2.dev/scenes/audio/def456.mp3',
+};
+
+const proxiedImageUrl = getProxiedUrl(scene.imageUrl);
+const proxiedAudioUrl = getProxiedUrl(scene.audioUrl);
+```
+
+#### Uso na Exportação de Vídeo (WebCodecs)
+```typescript
+const exportVideo = async (scenes: Scene[]) => {
+    for (const scene of scenes) {
+        // Usar URLs do proxy para evitar CORS
+        const videoBlob = await fetch(getProxiedUrl(scene.videoUrl || scene.imageUrl));
+        const audioBlob = await fetch(getProxiedUrl(scene.audioUrl));
+        
+        // ... lógica de encoding
+    }
+};
+```
+
+### Importante
+⚠️ **Sempre use URLs do proxy** quando for:
+- Carregar assets em `<canvas>`
+- Usar `VideoEncoder` / `AudioEncoder` (WebCodecs)
+- Processar assets com `fetch()` para manipulação binária
+- Exportar vídeos finais
+

@@ -53,6 +53,13 @@ Este é o serviço backend para o ShortsAI Studio, construído com **Next.js App
     ELEVENLABS_API_KEY="sua-chave-aqui"
     GEMINI_API_KEY="sua-chave-aqui"
     GROQ_API_KEY="sua-chave-aqui"
+    
+    # Cloudflare R2 Storage (para armazenamento de assets)
+    R2_ACCOUNT_ID="seu-account-id"
+    R2_ACCESS_KEY_ID="sua-access-key"
+    R2_SECRET_ACCESS_KEY="sua-secret-key"
+    R2_BUCKET_NAME="seu-bucket-name"
+    R2_PUBLIC_URL="https://pub-xxxxx.r2.dev"
     ```
 
 4.  Inicialize o Banco de Dados:
@@ -122,7 +129,66 @@ Para rodar em um servidor VPS (ex: Hostinger, DigitalOcean), você deve configur
     ```bash
     docker-compose up -d --build
     ```
+
+## 🔄 Deploy Automatizado (GitHub Actions)
+
+O projeto está configurado com GitHub Actions para deploy automático em VPS. O workflow é disparado automaticamente em push para a branch `master`.
+
+### Configuração Necessária
+
+1. **Secrets do GitHub**: Configure em `Settings > Secrets and variables > Actions`:
+   - `VPS_HOST`: IP ou domínio do VPS
+   - `VPS_USER`: Usuário SSH (geralmente `root`)
+   - `VPS_SSH_KEY`: Chave privada SSH
+   - `VPS_PORT`: Porta SSH (padrão: 22)
+   - `VPS_API_PATH`: Caminho do projeto no VPS (ex: `~/shortsai-api`)
+
+2. **Fluxo Automatizado**:
+   - ✅ Conecta no VPS via SSH
+   - ✅ Atualiza o código com `git pull`
+   - ✅ Derruba containers antigos
+   - ✅ Rebuilda com novo código
+   - ✅ Verifica se a API subiu corretamente
+
+## 💾 Cloudflare R2 Storage
+
+O projeto utiliza **Cloudflare R2** como storage para todos os assets gerados (imagens, áudios, vídeos).
+
+### Por que R2?
+- ✅ **Zero custos de egresso**: Sem cobrança por transferência de dados
+- ✅ **S3-Compatible**: Usa AWS SDK
+- ✅ **CDN Global**: Distribuição rápida de assets
+- ✅ **Escalável**: Suporta crescimento ilimitado
+
+### Configuração do R2
+
+1. Crie um bucket no [Cloudflare R2](https://developers.cloudflare.com/r2/)
+2. Gere as credenciais de acesso (API Token)
+3. Configure o domínio público para o bucket
+4. Adicione as variáveis de ambiente no `.env`:
+   ```env
+   R2_ACCOUNT_ID="seu-account-id"
+   R2_ACCESS_KEY_ID="sua-access-key"
+   R2_SECRET_ACCESS_KEY="sua-secret-key"
+   R2_BUCKET_NAME="seu-bucket-name"
+   R2_PUBLIC_URL="https://pub-xxxxx.r2.dev"
+   ```
+
+### Endpoint de Proxy `/api/assets`
+
+Para contornar problemas de CORS e melhorar o cache, a API fornece um endpoint proxy:
+
+```typescript
+// Uso no frontend
+const assetUrl = `/api/assets?url=${encodeURIComponent(r2Url)}`;
+```
+
+**Benefícios**:
+- ✅ Contorna CORS para uso com Canvas/WebCodecs
+- ✅ Cache imutável (1 ano)
+- ✅ Headers CORS configurados corretamente
     *Nota: O deploy é automatizado via GitHub Actions para a branch `main`.*
+
 
 ## 📚 Documentação da API
 
@@ -142,7 +208,11 @@ Para rodar em um servidor VPS (ex: Hostinger, DigitalOcean), você deve configur
     *   `POST /api/workflow/command`: Dispara ações (generate_all, regenerate_image, etc.).
     *   `GET /api/events/[projectId]`: Endpoint SSE para status em tempo real.
 
-*   **Usuários e Assets**
+*   **Assets e Storage**
+    *   `GET /api/assets?url={r2_url}`: Proxy para assets do R2 Storage. Contorna problemas de CORS e melhora cache.
+    *   `POST /api/scenes/[id]/asset`: Upload de assets (imagem/áudio) para R2 Storage.
+
+*   **Usuários e Personagens**
     *   `POST /api/users`: Sincroniza perfil de usuário.
     *   `POST /api/characters`: Gerencia personagens consistentes.
 

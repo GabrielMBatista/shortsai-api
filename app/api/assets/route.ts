@@ -50,11 +50,20 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'File not found in storage' }, { status: 404 });
         }
 
-        // Convert strict S3 stream to Web Stream Response
-        // @ts-ignore
-        const stream = s3Response.Body.transformToWebStream ? s3Response.Body.transformToWebStream() : s3Response.Body;
+        // Convert AWS SDK stream to Web Stream (required by Next.js 15)
+        const body = s3Response.Body;
+        let webStream: ReadableStream;
 
-        return new NextResponse(stream, {
+        // @ts-ignore - transformToWebStream exists on S3 response body
+        if (typeof body.transformToWebStream === 'function') {
+            // @ts-ignore
+            webStream = body.transformToWebStream();
+        } else {
+            // Fallback: create ReadableStream from body
+            throw new Error('Unable to convert stream to web stream');
+        }
+
+        return new NextResponse(webStream, {
             headers: {
                 'Content-Type': s3Response.ContentType || 'application/octet-stream',
                 'Content-Length': s3Response.ContentLength?.toString() || '',
