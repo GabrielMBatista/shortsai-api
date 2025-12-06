@@ -22,7 +22,10 @@ jobs:
             # Pull latest code from repository
             git pull origin master
             
-            # Full stack reset to ensure clean network and DNS
+            # Ensure shared network exists (External)
+            docker network create shortsai-network || true
+
+            # Stop containers (but network persists)
             docker-compose down --remove-orphans || true
             
             # Build and start ALL services

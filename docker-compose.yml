@@ -92,5 +92,5 @@ volumes:
     # ==============================
 networks:
   shortsai-network:
-    driver: bridge
-    name: shortsai-network # Força o nome fixo para o Frontend achar
+    external: true
+    name: shortsai-network
