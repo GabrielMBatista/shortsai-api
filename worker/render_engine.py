@@ -3,6 +3,11 @@ import os
 import requests
 import tempfile
 import time
+import PIL.Image
+# Monkey patch ANTIALIAS for Pillow 10+ compatibility with MoviePy
+if not hasattr(PIL.Image, 'ANTIALIAS'):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+
 from moviepy.editor import *
 from moviepy.video.tools.subtitles import SubtitlesClip
 import boto3
