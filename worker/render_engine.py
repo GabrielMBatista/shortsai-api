@@ -283,14 +283,19 @@ class RenderEngine:
         
         if progress_callback: progress_callback(90)
         
-        # Preset slow = better compression/quality. Bitrate for 1080p vertical.
+        # Preset ultrafast = speed priority. Threads = CPU count of Cloud Run.
+        # FPS 24 is enough for shorts (30 is overkill and slower to encode)
         final_clip.write_videofile(
             output_path, 
-            fps=30, 
+            fps=24,  # Reduced from 30 for faster encoding
             codec='libx264', 
             audio_codec='aac',
-            preset='ultrafast',
-            threads=4
+            preset='ultrafast',  # Fastest preset
+            threads=2,  # Match Cloud Run CPU allocation
+            bitrate='3000k',  # Reasonable bitrate for 1080p vertical
+            audio=True,
+            verbose=False,  # Reduce console spam
+            logger=None  # Disable progress bar overhead
         )
         
         # Cleanup clips to free resources
