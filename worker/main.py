@@ -21,12 +21,19 @@ DEFAULT_QUEUE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.
 QUEUE_FILE = os.getenv('QUEUE_PATH_WORKER', DEFAULT_QUEUE_PATH)
 
 def get_r2_config():
+    account_id = os.getenv('R2_ACCOUNT_ID')
+    endpoint = os.getenv('R2_ENDPOINT')
+    
+    # Auto-construct endpoint if missing but account_id is present
+    if not endpoint and account_id:
+        endpoint = f"https://{account_id}.r2.cloudflarestorage.com"
+        
     return {
-        'endpoint': os.getenv('R2_ENDPOINT'),
+        'endpoint': endpoint,
         'access_key': os.getenv('R2_ACCESS_KEY_ID'),
         'secret_key': os.getenv('R2_SECRET_ACCESS_KEY'),
         'bucket': os.getenv('R2_BUCKET_NAME'),
-        'public_url': os.getenv('R2_PUBLIC_URL', 'https://pub-your-id.r2.dev') 
+        'public_url': os.getenv('NEXT_PUBLIC_STORAGE_URL') or os.getenv('R2_PUBLIC_URL', 'https://pub-your-id.r2.dev') 
     }
 
 def process_job(job):
