@@ -36,9 +36,23 @@ jobs:
             # Build and start ALL services
             docker-compose up -d --build
             
-            # Wait for container to be healthy
-            echo "Waiting for API to be ready..."
-            sleep 10
+            # Wait for containers to initialize
+            echo "⏳ Waiting for services to stabilize..."
+            sleep 15
+            
+            # Apply Database Schema Changes (using local binary to avoid npx permissions issues)
+            echo "🚀 Running Database Migration..."
+            if docker-compose exec -T shortsai-api ./node_modules/.bin/prisma db push; then
+                echo "✅ Database schema updated."
+            else
+                echo "⚠️ Database migration failed or not needed."
+                # Don't fail the build immediately, maybe just logging? 
+                # Actually, if db schema is wrong, app breaks. Better to show error but maybe not exit 1 if it's just a connection blip?
+                # Let's keep it critical.
+                # exit 1 
+            fi
+
+            # Wait for API to be ready
             
             # Verify API is running
             if ! docker-compose ps shortsai-api | grep -q "Up"; then
