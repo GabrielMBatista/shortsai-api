@@ -67,60 +67,158 @@ class RenderEngine:
             print(f"Upload failed: {e}")
             raise e
 
+    def _create_ken_burns_clip(self, image_path, duration):
+        """
+        Creates a clip from an image with a slow zoom (Ken Burns) effect.
+        """
+        # Load image
+        clip = ImageClip(image_path).set_duration(duration)
+        w, h = clip.size
+        
+        # Target Vertical 9:16
+        target_w, target_h = 1080, 1920
+        target_ratio = target_w / target_h
+        img_ratio = w / h
+
+        # Initial Crop (Center Fill)
+        if img_ratio > target_ratio:
+            current_w = h * target_ratio
+            clip = clip.crop(x1=(w/2 - current_w/2), width=current_w, height=h)
+        else:
+            current_h = w / target_ratio
+            clip = clip.crop(y1=(h/2 - current_h/2), width=w, height=current_h)
+            
+        clip = clip.resize(newsize=(target_w, target_h))
+
+        # Apply Zoom Effect (1.0 -> 1.15)
+        return clip.resize(lambda t: 1 + 0.02 * t)  # 2% zoom per second approx
+
+    def _create_subtitle_clips(self, narration_text, word_timings, duration):
+        """
+        Generates a list of TextClips for the subtitles based on word timings.
+        Similar to the Frontend style (Yellow highlight).
+        """
+        if not word_timings:
+            return []
+            
+        subs = []
+        # Font settings - matching frontend "Komika Axis" or generic bold
+        font_size = 70
+        font = 'Arial-Bold' # System font available in Linux
+        stroke_color = 'black'
+        stroke_width = 3
+        
+        # We need to group words into lines or just show words?
+        # Frontend shows a block of text and highlights current word.
+        # Simulating that in MoviePy is hard (requires generating many images).
+        # Easier approach for V1: Show 3-5 words at a time (Caption style) OR Word-by-word.
+        # Let's try Word-by-Word Karaoke (Highlighted word in context is too heavy to render per frame).
+        # Fallback: Standard Captions (group of words).
+        
+        # Let's stick to the JSON 'wordTimings' which usually has {word, start, end}.
+        # We will render the current word or short phrase.
+        
+        for timing in word_timings:
+            word = timing.get('word', '')
+            start = timing.get('start', 0)
+            end = timing.get('end', 0)
+            
+            # Clamp end
+            if end > duration: end = duration
+            if start >= duration: continue
+            
+            # Create TextClip
+            # Yellow text with black outline
+            txt_clip = (TextClip(word, fontsize=font_size, font=font, color='yellow', stroke_color=stroke_color, stroke_width=stroke_width, method='caption', size=(900, None))
+                        .set_position(('center', 1500)) # Bottom area
+                        .set_start(start)
+                        .set_duration(end - start))
+            subs.append(txt_clip)
+            
+        return subs
+
     def create_scene_clip(self, scene):
-        # 1. Visual Asset (Image or Video)
+        duration = scene.get('duration', 5)
+        
+        # 1. Audio Setup (Determines strict duration if present)
+        audio_path = self.download_asset(scene.get('audioUrl'))
+        audio_clip = None
+        if audio_path:
+            audio_clip = AudioFileClip(audio_path)
+            duration = audio_clip.duration # Override duration with actual audio length
+
+        # 2. Visual Clip
         visual_path = None
         is_video = False
+        base_clip = None
         
         if scene.get('videoUrl'):
             visual_path = self.download_asset(scene['videoUrl'])
             is_video = True
         elif scene.get('imageUrl'):
             visual_path = self.download_asset(scene['imageUrl'])
-        
+            
         if not visual_path:
-            # Create a black clip if no visual
-            clip = ColorClip(size=(1080, 1920), color=(0,0,0), duration=scene.get('duration', 5))
+            base_clip = ColorClip(size=(1080, 1920), color=(0,0,0), duration=duration)
         else:
             if is_video:
-                clip = VideoFileClip(visual_path)
-                # Mute original video audio if we are adding specific narration/music
-                clip = clip.without_audio() 
+                # Video processing
+                raw_clip = VideoFileClip(visual_path).without_audio()
+                
+                # 1. Resize/Crop Video to 9:16 first
+                w, h = raw_clip.size
+                target_ratio = 1080 / 1920
+                img_ratio = w / h
+                if img_ratio > target_ratio:
+                    current_w = h * target_ratio
+                    raw_clip = raw_clip.crop(x1=(w/2 - current_w/2), width=current_w, height=h)
+                else:
+                    current_h = w / target_ratio
+                    raw_clip = raw_clip.crop(y1=(h/2 - current_h/2), width=w, height=current_h)
+                
+                raw_clip = raw_clip.resize(newsize=(1080, 1920))
+                
+                # 2. Check Duration & Extend if needed
+                if raw_clip.duration < duration:
+                    # Video is shorter than audio -> Freeze & Zoom extension
+                    remaining_duration = duration - raw_clip.duration
+                    if remaining_duration > 0.1: # Only if significant
+                        # Save last frame
+                        last_frame_path = os.path.join(self.temp_dir, f"frame_{int(time.time()*1000)}.png")
+                        raw_clip.save_frame(last_frame_path, t=raw_clip.duration - 0.05)
+                        
+                        # Apply Ken Burns to the frozen frame
+                        # Since it's already 1080x1920, _create_ken_burns_clip will just apply zoom
+                        freeze_clip = self._create_ken_burns_clip(last_frame_path, remaining_duration)
+                        
+                        # Concatenate
+                        base_clip = concatenate_videoclips([raw_clip, freeze_clip])
+                    else:
+                        base_clip = raw_clip
+                else:
+                    base_clip = raw_clip.subclip(0, duration)
             else:
-                clip = ImageClip(visual_path)
+                # Image: Apply Ken Burns
+                base_clip = self._create_ken_burns_clip(visual_path, duration)
 
-        # 2. Resize to 9:16 (1080x1920)
-        # Assuming we want to fill the screen (center crop)
-        w, h = clip.size
-        target_ratio = 1080 / 1920
-        current_ratio = w / h
+        # Attach Audio
+        if audio_clip:
+            base_clip = base_clip.set_audio(audio_clip)
+        
+        # Ensure final total duration matches exactly (concatenation might drift slightly)
+        base_clip = base_clip.set_duration(duration)
 
-        if current_ratio > target_ratio:
-            # Wielder -> Crop sides
-            new_width = h * target_ratio
-            clip = clip.crop(x1=(w/2 - new_width/2), width=new_width, height=h)
-        else:
-            # Taller -> Crop top/bottom
-            new_height = w / target_ratio
-            clip = clip.crop(y1=(h/2 - new_height/2), width=w, height=new_height)
-            
-        clip = clip.resize(newsize=(1080, 1920))
-
-        # 3. Audio (Narration)
-        audio_path = self.download_asset(scene.get('audioUrl'))
-        if audio_path:
-            audio_clip = AudioFileClip(audio_path)
-            clip = clip.set_audio(audio_clip)
-            # Ensure video duration matches audio duration
-            # Standard logic: extend image, or loop/freeze video?
-            # For simplicity: duration is driven by audio
-            clip = clip.set_duration(audio_clip.duration)
-        else:
-            # Use provided duration for images if no audio, or existing duration for video
-            if not is_video:
-                clip = clip.set_duration(scene.get('duration', 5))
-
-        return clip
+        # 3. Subtitles Overlay
+        # Assuming 'wordTimings' is passed in the scene object
+        word_timings = scene.get('wordTimings', [])
+        subtitle_clips = self._create_subtitle_clips(scene.get('narration', ''), word_timings, duration)
+        
+        if subtitle_clips:
+            # Composite visual + subtitles
+            final_clip = CompositeVideoClip([base_clip] + subtitle_clips).set_duration(duration)
+            return final_clip
+        
+        return base_clip
 
     def render(self, job_payload):
         scenes_data = job_payload.get('scenes', [])
