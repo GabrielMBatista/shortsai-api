@@ -40,6 +40,9 @@ export async function uploadBufferToR2(
     if (!process.env.R2_BUCKET_NAME) {
       throw new Error("R2_BUCKET_NAME not defined");
     }
+    if (!process.env.NEXT_PUBLIC_STORAGE_URL) {
+      console.warn("⚠️ NEXT_PUBLIC_STORAGE_URL environment variable is missing!");
+    }
 
     await s3Client.send(new PutObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME,
