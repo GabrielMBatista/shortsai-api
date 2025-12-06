@@ -289,7 +289,7 @@ class RenderEngine:
             fps=30, 
             codec='libx264', 
             audio_codec='aac',
-            preset='medium',
+            preset='ultrafast',
             threads=4
         )
         
