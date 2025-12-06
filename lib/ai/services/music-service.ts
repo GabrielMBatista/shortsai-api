@@ -69,11 +69,35 @@ export class MusicService {
 
                 if (status === 'SUCCESS' || status === 'FIRST_SUCCESS') {
                     const clip = recordData.response?.sunoData?.[0];
-                    if (clip?.audioUrl) return clip.audioUrl;
+                    if (clip?.audioUrl) {
+                        try {
+                            const audioRes = await fetch(clip.audioUrl);
+                            if (audioRes.ok) {
+                                const arrayBuffer = await audioRes.arrayBuffer();
+                                const buffer = Buffer.from(arrayBuffer);
+                                return await MusicService.uploadToR2(buffer, 'audio/mpeg', 'music');
+                            }
+                        } catch (e) {
+                            console.warn("Failed to upload music to R2, using Suno URL", e);
+                        }
+                        return clip.audioUrl;
+                    }
                 }
                 if (['CREATE_TASK_FAILED', 'GENERATE_AUDIO_FAILED'].includes(status)) throw new Error("Music generation failed");
             } catch (e) { console.warn("Polling error", e); }
         }
         throw new Error("Music generation timed out");
+    }
+
+
+    private static async uploadToR2(buffer: Buffer, mimeType: string, folder: 'music'): Promise<string> {
+        try {
+            const { uploadBufferToR2 } = await import('@/lib/storage');
+            const url = await uploadBufferToR2(buffer, mimeType, folder);
+            return url;
+        } catch (e) {
+            console.error("Failed to upload music to R2", e);
+            throw e;
+        }
     }
 }

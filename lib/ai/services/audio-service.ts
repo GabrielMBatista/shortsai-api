@@ -44,7 +44,8 @@ export class AudioService {
             const arrayBuffer = await response.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
             const base64Audio = buffer.toString('base64');
-            const url = `data:audio/wav;base64,${base64Audio}`;
+            const dataUri = `data:audio/wav;base64,${base64Audio}`;
+            const url = await AudioService.uploadToR2(dataUri, 'scenes/audio');
 
             let duration = 5;
             if (buffer.length > 44) {
@@ -121,7 +122,8 @@ export class AudioService {
                 }
             }
 
-            const url = `data:audio/mpeg;base64,${base64Audio}`;
+            const dataUri = `data:audio/mpeg;base64,${base64Audio}`;
+            const url = await AudioService.uploadToR2(dataUri, 'scenes/audio');
 
             let duration = 0;
             if (alignment && alignment.character_end_times_seconds && alignment.character_end_times_seconds.length > 0) {
@@ -164,9 +166,11 @@ export class AudioService {
 
                 console.log('[Gemini TTS] Generated WAV audio, size:', wavDataUri.length, 'chars', 'Duration:', duration.toFixed(2), 's');
 
+                const r2Url = await AudioService.uploadToR2(wavDataUri, 'scenes/audio');
+
                 await trackUsage(userId, 'gemini', 'gemini-2.5-flash-preview-tts', 'audio', duration);
 
-                return { url: wavDataUri, duration };
+                return { url: r2Url, duration };
             }
             throw new Error("Audio generation failed - no inline data");
         }, userId);
@@ -203,6 +207,17 @@ export class AudioService {
         } catch (error) {
             console.error("ElevenLabs Fetch Error", error);
             return [];
+        }
+    }
+
+    private static async uploadToR2(base64Data: string, folder: 'scenes/audio'): Promise<string> {
+        try {
+            const { uploadBase64ToR2 } = await import('@/lib/storage');
+            const url = await uploadBase64ToR2(base64Data, folder);
+            return url || base64Data;
+        } catch (e) {
+            console.error("Failed to upload to R2, returning Base64", e);
+            return base64Data;
         }
     }
 }

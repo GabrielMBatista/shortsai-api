@@ -30,7 +30,8 @@ export class ImageService {
             if (candidate?.content?.parts) {
                 for (const part of candidate.content.parts) {
                     if (part.inlineData?.data) {
-                        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+                        const base64Image = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+                        return await ImageService.uploadToR2(base64Image, 'scenes/images');
                     }
                 }
                 const textPart = candidate.content.parts.find(p => p.text);
@@ -100,11 +101,23 @@ export class ImageService {
             if (candidate?.content?.parts) {
                 for (const part of candidate.content.parts) {
                     if (part.inlineData?.data) {
-                        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+                        const base64Image = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+                        return await ImageService.uploadToR2(base64Image, 'characters');
                     }
                 }
             }
             throw new Error("Optimization failed - No image returned");
         }, userId);
+    }
+
+    private static async uploadToR2(base64Data: string, folder: 'scenes/images' | 'characters'): Promise<string> {
+        try {
+            const { uploadBase64ToR2 } = await import('@/lib/storage');
+            const url = await uploadBase64ToR2(base64Data, folder);
+            return url || base64Data;
+        } catch (e) {
+            console.error("Failed to upload to R2, returning Base64", e);
+            return base64Data;
+        }
     }
 }
