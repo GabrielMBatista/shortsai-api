@@ -28,6 +28,11 @@ jobs:
             # Stop containers (but network persists)
             docker-compose down --remove-orphans || true
             
+            # Fix Volume Permissions (Force ownership to Next.js user 1001)
+            # Try likely volume names based on folder folder structure
+            docker run --rm -v shortsai-api_shortsai_data:/data alpine chown -R 1001:1001 /data || true
+            docker run --rm -v shortsai_data:/data alpine chown -R 1001:1001 /data || true
+            
             # Build and start ALL services
             docker-compose up -d --build
             
