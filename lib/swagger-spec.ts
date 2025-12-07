@@ -118,6 +118,29 @@ export const openApiSpec: OpenAPIObject = {
                     },
                 },
             },
+            Show: {
+                type: 'object',
+                properties: {
+                    id: { type: 'string', format: 'uuid' },
+                    user_id: { type: 'string', format: 'uuid' },
+                    name: { type: 'string' },
+                    description: { type: 'string' },
+                    style_preset: { type: 'string' },
+                    visual_prompt: { type: 'string' },
+                    default_tts_provider: { type: 'string' },
+                    updated_at: { type: 'string', format: 'date-time' },
+                    created_at: { type: 'string', format: 'date-time' },
+                },
+            },
+            Folder: {
+                type: 'object',
+                properties: {
+                    id: { type: 'string', format: 'uuid' },
+                    user_id: { type: 'string', format: 'uuid' },
+                    name: { type: 'string' },
+                    created_at: { type: 'string', format: 'date-time' },
+                },
+            },
         },
     },
     paths: {
@@ -657,6 +680,230 @@ export const openApiSpec: OpenAPIObject = {
                                 }
                             }
                         }
+                    },
+                },
+            },
+        },
+        '/shows': {
+            get: {
+                summary: 'List user shows',
+                responses: {
+                    '200': {
+                        description: 'List of shows',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'array',
+                                    items: { $ref: '#/components/schemas/Show' },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            post: {
+                summary: 'Create a new show',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['name'],
+                                properties: {
+                                    name: { type: 'string' },
+                                    description: { type: 'string' },
+                                    style_preset: { type: 'string' },
+                                    visual_prompt: { type: 'string' },
+                                    default_tts_provider: { type: 'string', enum: ['gemini', 'elevenlabs', 'groq'] },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '201': { description: 'Show created' },
+                },
+            },
+        },
+        '/shows/{id}': {
+            get: {
+                summary: 'Get show details',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                responses: {
+                    '200': { description: 'Show details', content: { 'application/json': { schema: { $ref: '#/components/schemas/Show' } } } },
+                },
+            },
+            patch: {
+                summary: 'Update show',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    name: { type: 'string' },
+                                    description: { type: 'string' },
+                                    style_preset: { type: 'string' },
+                                    visual_prompt: { type: 'string' },
+                                    default_tts_provider: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': { description: 'Show updated' },
+                },
+            },
+            delete: {
+                summary: 'Delete show',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                responses: {
+                    '200': { description: 'Show deleted' },
+                },
+            },
+        },
+        '/folders': {
+            get: {
+                summary: 'List user folders',
+                responses: {
+                    '200': {
+                        description: 'List of folders',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        folders: { type: 'array', items: { $ref: '#/components/schemas/Folder' } },
+                                        rootCount: { type: 'integer' },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            post: {
+                summary: 'Create folder',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['name'],
+                                properties: { name: { type: 'string' } },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': { description: 'Folder created' },
+                },
+            },
+        },
+        '/folders/{id}': {
+            patch: {
+                summary: 'Rename folder',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['name'],
+                                properties: { name: { type: 'string' } },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': { description: 'Folder updated' },
+                },
+            },
+            delete: {
+                summary: 'Delete folder',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                responses: {
+                    '200': { description: 'Folder deleted' },
+                },
+            },
+        },
+        '/render': {
+            post: {
+                summary: 'Queue video render job',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['projectId', 'scenes'],
+                                properties: {
+                                    projectId: { type: 'string' },
+                                    scenes: { type: 'array', items: { $ref: '#/components/schemas/Scene' } },
+                                    bgMusicUrl: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': {
+                        description: 'Job Queued',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        success: { type: 'boolean' },
+                                        jobId: { type: 'string' },
+                                        status: { type: 'string' },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        '/render/{id}': {
+            get: {
+                summary: 'Get render job status',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                responses: {
+                    '200': {
+                        description: 'Job Status',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        id: { type: 'string' },
+                                        status: { type: 'string' },
+                                        resultUrl: { type: 'string' },
+                                        progress: { type: 'number' },
+                                        eta: { type: 'number' },
+                                        error: { type: 'string' }
+                                    },
+                                },
+                            },
+                        },
                     },
                 },
             },
