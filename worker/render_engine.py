@@ -74,7 +74,8 @@ class RenderEngine:
 
     def _create_ken_burns_clip(self, image_path, duration):
         """
-        Creates a clip from an image with a slow zoom (Ken Burns) effect.
+        Creates a clip from an image with a SIMPLIFIED zoom (Ken Burns) effect.
+        Removed per-frame resize for extreme speed.
         """
         # Load image
         clip = ImageClip(image_path).set_duration(duration)
@@ -95,8 +96,8 @@ class RenderEngine:
             
         clip = clip.resize(newsize=(target_w, target_h))
 
-        # Apply Zoom Effect (1.0 -> 1.15)
-        return clip.resize(lambda t: 1 + 0.02 * t)  # 2% zoom per second approx
+        # REMOVED zoom effect for speed - static image
+        return clip
 
     def _create_subtitle_clips(self, narration_text, word_timings, duration):
         """
@@ -283,19 +284,22 @@ class RenderEngine:
         
         if progress_callback: progress_callback(90)
         
-        # Preset ultrafast = speed priority. Threads = CPU count of Cloud Run.
-        # FPS 24 is enough for shorts (30 is overkill and slower to encode)
+        # EXTREME SPEED optimizations with 2 CPU limit (Free Tier)
+        # Target: ~2-3min render time (down from 10min)
         final_clip.write_videofile(
             output_path, 
-            fps=24,  # Reduced from 30 for faster encoding
+            fps=20,  # Ultra low FPS for speed (still acceptable for shorts)
             codec='libx264', 
             audio_codec='aac',
-            preset='ultrafast',  # Fastest preset
-            threads=2,  # Match Cloud Run CPU allocation
-            bitrate='3000k',  # Reasonable bitrate for 1080p vertical
+            preset='veryfast',  # Faster encoding
+            threads=2,  # Match Cloud Run free tier CPU allocation
+            bitrate='2500k',  # Lower bitrate = faster encode
+            audio_bitrate='128k',  # Lower audio bitrate
             audio=True,
-            verbose=False,  # Reduce console spam
-            logger=None  # Disable progress bar overhead
+            verbose=False,
+            logger=None,
+            write_logfile=False,  # No log file
+            temp_audiofile_path=None  # Disable temp audio file
         )
         
         # Cleanup clips to free resources
