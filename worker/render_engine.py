@@ -298,8 +298,7 @@ class RenderEngine:
             audio=True,
             verbose=False,
             logger=None,
-            write_logfile=False,  # No log file
-            temp_audiofile_path=None  # Disable temp audio file
+            write_logfile=False  # No log file
         )
         
         # Cleanup clips to free resources
