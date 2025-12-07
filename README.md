@@ -69,12 +69,44 @@ WORKER_SECRET=sua_chave_segura
 ```
 Isso garante que a API saiba para onde despachar os jobs de vídeo.
 
-## 📚 Documentação da API
+## 📚 Documentação
 
-### Endpoints Principais
-*   `POST /api/render`: Enfileira um job de renderização.
-*   `GET /api/render/[id]`: Status do job.
-*   `POST /api/webhooks/job-status`: Webhook recebido do Worker com atualizações de progresso.
+### Guias Disponíveis
+
+- **[Integração Frontend](./FRONTEND_INTEGRATION.md)** - Guia completo de integração entre Frontend e API
+  - Workflow e comandos
+  - Polling de atualizações
+  - Proxy de assets R2
+  - Geração de roteiro e análise de personagens
+
+- **[Worker Python](./worker/README.md)** - Microsserviço de renderização de vídeo
+  - Setup local
+  - Deploy para Cloud Run
+  - Configurações de ambiente
+
+- **[Backup do Banco](./docs/BACKUP.md)** - Sistema automatizado de backup PostgreSQL
+  - Setup inicial na VPS (uma vez)
+  - Backup automático a cada 6h
+  - Restauração de backups
+
+### Endpoints Principais da API
+
+*   `POST /api/workflow/command` - Enviar comandos de geração (generate_all, regenerate_image, etc)
+*   `GET /api/projects/[id]` - Buscar projeto e fazer polling de status
+*   `POST /api/ai/generate` - Gerar roteiro ou analisar personagens
+*   `GET /api/assets?url=` - Proxy para assets R2 (solução de CORS)
+*   `POST /api/render` - Enfileirar job de renderização
+*   `GET /api/render/[id]` - Status do job
+*   `POST /api/webhooks/job-status` - Webhook do Worker
+
+### Quick Start: Backup Automático
+
+```bash
+# Na VPS após deploy
+chmod +x scripts/*.sh
+bash scripts/setup-cron.sh
+# Escolha opção 1 (backup a cada 6h)
+```
 
 ---
 Desenvolvido para ShortsAI Studio.
