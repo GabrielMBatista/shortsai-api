@@ -8,18 +8,19 @@ Este é o serviço backend para o ShortsAI Studio, construído com **Next.js App
 
 O sistema foi refatorado para alta escalabilidade:
 
-1.  **API (Next.js - VPS):** Gerencia lógica de negócios, banco de dados (PostgreSQL), usuários e SSE.
+1.  **API (Next.js - VPS):** Gerencia lógica de negócios, banco de dados (PostgreSQL), usuários.
 2.  **Worker (Python - Google Cloud Run):** Microsserviço dedicado e serverless para renderização pesada de vídeos usando MoviePy + FFmpeg.
 
 A comunicação segue o fluxo:
-`Frontend -> API (Queue Job) -> Cloud Run (Render) -> Webhook (Status Update) -> API -> Frontend (SSE)`
+`Frontend -> API (Queue Job) -> Cloud Run (Render) -> Webhook (Status Update) -> API -> Frontend (Polling)`
 
 ## ✨ Funcionalidades Principais
 
 *   **Orquestração de Workflow**: Gerencia tarefas de geração complexas (Roteiro -> Imagens -> Áudio -> Vídeo).
-*   **Worker Escalável**: Renderização de vídeos movida para o Google Cloud Run, permitindo paralelismo ilimitado e evitando travamentos na VPS.
+*   **Worker Escalável**: Renderização de vídeos movida para o Google Cloud Run (ou VPS Docker).
+    > **Nota:** O uso do Cloud Run no nível gratuito (Free Tier) pode apresentar desempenho limitado (Cold Starts, CPU throttling) para renderização de vídeo. Para produção em alta escala, recomenda-se instâncias dedicadas.
 *   **Controle de Concorrência**: Bloqueio de projeto e filas de processamento resilientes.
-*   **Atualizações em Tempo Real**: Usa **Server-Sent Events (SSE)** para feedback instantâneo.
+*   **Atualizações em Tempo Real**: O frontend realiza polling eficiente para acompanhar o progresso.
 *   **R2 Storage**: Armazenamento de assets (vídeos, áudios, imagens) no Cloudflare R2 com zero custo de egresso.
 
 ## 🛠️ Tech Stack

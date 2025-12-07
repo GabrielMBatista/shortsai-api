@@ -47,3 +47,4 @@ seed-plans.ts
 seed-plans.js
 seed.sql
 update-limits.ts
+queue.json
