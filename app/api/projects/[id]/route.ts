@@ -44,7 +44,7 @@ export async function GET(
                 created_at: true,
                 updated_at: true,
                 // Excluding heavy base64 fields: reference_image_url, bg_music_url, etc.
-                
+
                 scenes: {
                     where: { deleted_at: null },
                     orderBy: { scene_number: 'asc' },
@@ -75,15 +75,15 @@ export async function GET(
                 },
                 characters: {
                     select: {
-                         id: true,
-                         name: true,
-                         description: true,
-                         // images: true // Include images? If they are small, ok. If base64, careful.
-                         // Usually character images are needed for context, but if they are large base64...
-                         // Let's assume they are needed for now as there is no lazy load for characters yet.
-                         images: true,
-                         user_id: true,
-                         created_at: true
+                        id: true,
+                        name: true,
+                        description: true,
+                        // images: true // Include images? If they are small, ok. If base64, careful.
+                        // Usually character images are needed for context, but if they are large base64...
+                        // Let's assume they are needed for now as there is no lazy load for characters yet.
+                        images: true,
+                        user_id: true,
+                        created_at: true
                     }
                 },
             },
@@ -177,9 +177,22 @@ export async function DELETE(
 
         const { id } = await params;
 
+        // Fetch project with scenes to get all asset URLs
         const existingProject = await prisma.project.findUnique({
             where: { id },
-            select: { user_id: true }
+            select: {
+                user_id: true,
+                bg_music_url: true,
+                scenes: {
+                    where: { deleted_at: null },
+                    select: {
+                        image_url: true,
+                        audio_url: true,
+                        video_url: true,
+                        sfx_url: true,
+                    }
+                }
+            }
         });
 
         if (!existingProject) {
@@ -190,6 +203,23 @@ export async function DELETE(
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
+        // Delete all assets from R2
+        const { deleteFromR2 } = await import('@/lib/storage');
+
+        // Delete scene assets
+        for (const scene of existingProject.scenes) {
+            await Promise.all([
+                deleteFromR2(scene.image_url),
+                deleteFromR2(scene.audio_url),
+                deleteFromR2(scene.video_url),
+                deleteFromR2(scene.sfx_url),
+            ]);
+        }
+
+        // Delete background music
+        await deleteFromR2(existingProject.bg_music_url);
+
+        // Now delete from database
         await prisma.project.delete({
             where: { id },
         });

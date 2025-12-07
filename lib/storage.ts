@@ -74,7 +74,7 @@ export async function uploadBase64ToR2(
 
   if (!matches || matches.length !== 3) {
     if (content.length > 200) {
-        console.warn(`⚠️ Conteúdo inválido ou não é base64 padrão (len=${content.length}). Ignorando.`);
+      console.warn(`⚠️ Conteúdo inválido ou não é base64 padrão (len=${content.length}). Ignorando.`);
     }
     return content;
   }
@@ -85,3 +85,32 @@ export async function uploadBase64ToR2(
 
   return uploadBufferToR2(buffer, mimeType, folder);
 }
+
+/**
+ * Deletes a file from R2 given its public URL
+ */
+export async function deleteFromR2(url: string | null): Promise<void> {
+  if (!url || !url.includes(process.env.NEXT_PUBLIC_STORAGE_URL || '')) {
+    return; // Not an R2 URL or null, skip
+  }
+
+  try {
+    // Extract the key from the URL
+    // URL format: https://pub-xxxxx.r2.dev/folder/file.ext
+    const storageUrl = process.env.NEXT_PUBLIC_STORAGE_URL!;
+    const key = url.replace(`${storageUrl}/`, '');
+
+    const { DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+
+    await s3Client.send(new DeleteObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME!,
+      Key: key,
+    }));
+
+    console.log(`✅ Deleted from R2: ${key}`);
+  } catch (error) {
+    console.error(`❌ Error deleting from R2:`, error);
+    // Don't throw - we don't want deletion to fail if R2 delete fails
+  }
+}
+
