@@ -187,10 +187,7 @@ export class WorkflowService {
         return { message: 'Scene skipped' };
     }
 
-    static async getNextTask(projectId: string): Promise<WorkflowTask | null> {
-        // Legacy/polling based. dispatchNext handles the push.
-        return null;
-    }
+
 
     static async completeTask(projectId: string, sceneId: string | undefined, type: 'image' | 'audio' | 'music' | 'video', status: 'completed' | 'failed', outputUrl?: string, error?: string, apiKeys?: any, timings?: any[], duration?: number) {
         return WorkflowEngine.completeTask(projectId, sceneId, type, status, outputUrl, error, apiKeys, timings, duration);
