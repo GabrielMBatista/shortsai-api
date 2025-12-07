@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
         console.log(`[Assets Proxy] Fetching from S3/R2: ${objectKey}`);
 
         if (!process.env.R2_BUCKET_NAME) {
+            console.error('R2_BUCKET_NAME is undefined via process.env');
             throw new Error("R2_BUCKET_NAME not visible to API");
         }
 
