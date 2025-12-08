@@ -13,8 +13,8 @@ export class ScriptService {
     ): Promise<any> {
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId, keys?.gemini);
 
-        const minSeconds = durationConfig?.min || 65;
-        const maxSeconds = durationConfig?.max || 90;
+        const minSeconds = durationConfig?.min ?? 65;
+        const maxSeconds = durationConfig?.max ?? 90;
         const sceneInstruction = durationConfig?.targetScenes
             ? `Strictly generate exactly ${durationConfig.targetScenes} scenes.`
             : `Generate between ${Math.max(3, Math.floor(minSeconds / 10))} to ${Math.min(15, Math.ceil(maxSeconds / 5))} scenes based on pacing.`;
