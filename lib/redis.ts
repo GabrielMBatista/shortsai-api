@@ -19,7 +19,7 @@ const getUrlOptions = () => {
             username: url.username ? decodeURIComponent(url.username) : undefined,
         };
     } catch (e) {
-        console.warn('Invalid REDIS_URL:', e);
+        console.warn('Invalid REDIS_URL:', e); 
         return {};
     }
 };

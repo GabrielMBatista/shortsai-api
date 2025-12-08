@@ -41,6 +41,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             data: { name },
         });
 
+        // Invalidate cache
+        const { invalidateCache } = await import('@/lib/redis');
+        await invalidateCache(`api:folders:${user_id}`);
+
         return NextResponse.json(updatedFolder);
     } catch (error: any) {
         if (error.code === 'P2002') {
@@ -120,6 +124,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         await prisma.folder.delete({
             where: { id },
         });
+
+        // Invalidate cache
+        const { invalidateCache } = await import('@/lib/redis');
+        await invalidateCache(`api:folders:${user_id}`);
 
         return NextResponse.json({ success: true });
     } catch (error: any) {

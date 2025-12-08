@@ -174,6 +174,12 @@ export async function PATCH(
             }
         });
 
+        // Invalidate fetching folders cache if folder_id OR is_archived changed
+        if (updateData.folder_id !== undefined || updateData.is_archived !== undefined) {
+            const { invalidateCache } = await import('@/lib/redis');
+            await invalidateCache(`api:folders:${session.user.id}`);
+        }
+
         const mappedProject = {
             ...project,
             ProjectCharacters: undefined,
@@ -245,6 +251,10 @@ export async function DELETE(
         await prisma.project.delete({
             where: { id },
         });
+
+        // Invalidate folders cache as deleting a project changes counts
+        const { invalidateCache } = await import('@/lib/redis');
+        await invalidateCache(`api:folders:${session.user.id}`);
 
         return NextResponse.json({ success: true });
     } catch (error: any) {
