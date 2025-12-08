@@ -8,6 +8,313 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id                      String           @id @default(uuid())
+  email                   String           @unique
+  name                    String?
+  avatar_url              String?
+  google_id               String?          @unique
+  subscription_plan       SubscriptionPlan @default(FREE)
+  stripe_customer_id      String?
+  created_at              DateTime         @default(now())
+  tier                    Tier             @default(free)
+  updated_at              DateTime         @default(now()) @updatedAt
+  emailVerified           DateTime?        @map("email_verified")
+  image                   String?
+  is_blocked              Boolean          @default(false)
+  role                    Role             @default(USER)
+  last_video_generated_at DateTime?
+  plan_id                 String?
+  accounts                Account[]
+  api_keys                ApiKey?
+  characters              Character[]
+  folders                 Folder[]
+  projects                Project[]
+  sessions                Session[]
+  shows                   Show[]
+  usage_logs              UsageLog[]
+  user_limits             UserLimits?
+  plan                    Plan?            @relation(fields: [plan_id], references: [id])
+
+  @@map("users")
+}
+
+model Plan {
+  id                   String   @id @default(uuid())
+  name                 String   @unique
+  slug                 String   @unique
+  description          String?
+  price                Decimal  @default(0)
+  monthly_images_limit Int      @default(10)
+  monthly_videos_limit Int      @default(5)
+  monthly_minutes_tts  Int      @default(10)
+  daily_requests_limit Int      @default(50)
+  daily_videos_limit   Int      @default(2)
+  features             Json?
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+  users                User[]
+
+  @@map("plans")
+}
+
+model Account {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String   @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model ApiKey {
+  user_id        String   @id
+  gemini_key     String?
+  elevenlabs_key String?
+  suno_key       String?
+  updated_at     DateTime @default(now()) @updatedAt
+  groq_key       String?
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+model Show {
+  id                   String      @id @default(uuid())
+  user_id              String
+  name                 String
+  description          String?
+  style_preset         String?
+  visual_prompt        String?
+  default_tts_provider TTSProvider @default(gemini)
+  created_at           DateTime    @default(now())
+  updated_at           DateTime    @updatedAt
+  characters           Character[]
+  episodes             Project[]
+  user                 User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("shows")
+}
+
+model Project {
+  id                            String              @id @default(uuid())
+  user_id                       String
+  topic                         String
+  style                         String
+  language                      String              @default("en")
+  voice_name                    String
+  tts_provider                  TTSProvider
+  reference_image_url           String?
+  include_music                 Boolean             @default(false)
+  bg_music_prompt               String?
+  bg_music_url                  String?
+  bg_music_status               MusicStatus?
+  created_at                    DateTime            @default(now())
+  updated_at                    DateTime            @default(now()) @updatedAt
+  generated_description         String?
+  generated_title               String?
+  reference_characters_snapshot Json?
+  status                        ProjectStatus       @default(draft)
+  duration_config               Json?
+  lock_expires_at               DateTime?
+  lock_session_id               String?
+  video_model                   String              @default("veo")
+  folder_id                     String?
+  is_archived                   Boolean             @default(false)
+  tags                          String[]            @default([])
+  audio_model                   String?
+  episode_number                Int?
+  show_id                       String?
+  final_video_url               String?
+  ProjectCharacters             ProjectCharacters[]
+  folder        Folder?             @relation(fields: [folder_id], references: [id], onDelete: Cascade)
+  show                          Show?               @relation(fields: [show_id], references: [id])
+  user                          User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  scenes                        Scene[]
+  usage_logs                    UsageLog[]
+
+  @@index([user_id])
+  @@index([show_id])
+  @@map("projects")
+}
+
+model Folder {
+  id         String    @id @default(uuid())
+  name       String
+  user_id    String
+  parent_id  String?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  projects   Project[]
+  
+  parent     Folder?   @relation("SubFolders", fields: [parent_id], references: [id], onDelete: Cascade)
+  children   Folder[]  @relation("SubFolders")
+
+  @@unique([user_id, name])
+  @@index([user_id])
+  @@map("folders")
+}
+
+model Scene {
+  id                 String      @id @default(uuid())
+  project_id         String
+  scene_number       Int
+  visual_description String
+  narration          String
+  duration_seconds   Decimal     @db.Decimal(5, 2)
+  image_url          String?
+  image_status       SceneStatus @default(draft)
+  audio_url          String?
+  audio_status       SceneStatus @default(draft)
+  created_at         DateTime    @default(now())
+  error_message      String?
+  sfx_status         SceneStatus @default(draft)
+  sfx_url            String?
+  audio_attempts     Int         @default(0)
+  image_attempts     Int         @default(0)
+  sfx_attempts       Int         @default(0)
+  deleted_at         DateTime?
+  word_timings       Json?
+  video_status       SceneStatus @default(draft)
+  video_url          String?
+  video_attempts     Int         @default(0)
+  media_type         String      @default("image")
+  status             String      @default("DRAFT")
+  version            Int         @default(0)
+  character_id       String?
+  jobs               Job[]
+  character          Character?  @relation(fields: [character_id], references: [id])
+  project            Project     @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@index([project_id])
+  @@index([project_id, scene_number])
+  @@map("scenes")
+}
+
+model Job {
+  id           String   @id @default(cuid())
+  type         String
+  status       String   @default("QUEUED")
+  inputPayload Json
+  outputResult Json?
+  errorMessage String?
+  projectId    String
+  sceneId      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  scene        Scene?   @relation(fields: [sceneId], references: [id])
+
+  @@index([status])
+  @@index([sceneId])
+}
+
+model UserLimits {
+  user_id                  String   @id
+  monthly_videos_limit     Int      @default(5)
+  monthly_minutes_tts      Int      @default(10)
+  monthly_images_limit     Int      @default(50)
+  current_videos_used      Int      @default(0)
+  current_minutes_tts_used Decimal  @default(0) @db.Decimal(10, 2)
+  current_images_used      Int      @default(0)
+  last_reset_date          DateTime @default(now())
+  current_daily_requests   Int      @default(0)
+  daily_requests_limit     Int      @default(100)
+  last_daily_reset         DateTime @default(now())
+  current_daily_videos     Int      @default(0)
+  daily_videos_limit       Int      @default(1)
+  user                     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("user_limits")
+}
+
+model Character {
+  id                String              @id @default(uuid())
+  user_id           String
+  name              String
+  description       String?
+  created_at        DateTime            @default(now())
+  images            String[]
+  show_id           String?
+  voice_id          String?
+  voice_provider    TTSProvider?
+  voice_settings    Json?
+  ProjectCharacters ProjectCharacters[]
+  show              Show?               @relation(fields: [show_id], references: [id])
+  user              User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  scenes            Scene[]
+
+  @@index([user_id])
+  @@map("characters")
+}
+
+model UsageLog {
+  id               String         @id @default(uuid())
+  user_id          String?
+  project_id       String?
+  action_type      UsageLogAction
+  provider         String
+  model_name       String
+  tokens_input     Int            @default(0)
+  tokens_output    Int            @default(0)
+  duration_seconds Decimal        @default(0) @db.Decimal(10, 2)
+  status           UsageLogStatus
+  error_message    String?
+  created_at       DateTime       @default(now())
+  idempotency_key  String?        @unique
+  project          Project?       @relation(fields: [project_id], references: [id])
+  user             User?          @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@index([project_id])
+  @@map("usage_logs")
+}
+
+model ProjectCharacters {
+  A          String
+  B          String
+  characters Character @relation(fields: [A], references: [id], onDelete: Cascade)
+  projects   Project   @relation(fields: [B], references: [id], onDelete: Cascade)
+
+  @@id([A, B], map: "_ProjectCharacters_AB_pkey")
+  @@index([B], map: "_ProjectCharacters_B_index")
+  @@map("_ProjectCharacters")
+}
+
 enum SubscriptionPlan {
   FREE
   PRO
@@ -70,330 +377,4 @@ enum UsageLogStatus {
 enum Role {
   USER
   ADMIN
-}
-
-model User {
-  id                 String           @id @default(uuid())
-  name               String?
-  email              String           @unique
-  emailVerified      DateTime?        @map("email_verified")
-  image              String?
-  avatar_url         String?
-  google_id          String?          @unique
-  role               Role             @default(USER)
-  subscription_plan  SubscriptionPlan @default(FREE)
-  tier               Tier             @default(free)
-  is_blocked         Boolean          @default(false)
-  stripe_customer_id String?
-  created_at         DateTime         @default(now())
-  updated_at         DateTime         @default(now()) @updatedAt
-  last_video_generated_at DateTime?
-
-  accounts    Account[]
-  sessions    Session[]
-  api_keys    ApiKey?
-  user_limits UserLimits?
-  projects    Project[]
-  folders     Folder[]
-  characters  Character[]
-  shows       Show[]
-  usage_logs  UsageLog[]
-
-  plan_id       String?
-  plan          Plan?    @relation(fields: [plan_id], references: [id])
-
-  @@map("users")
-}
-
-model Plan {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  slug        String   @unique
-  description String?
-  price       Decimal  @default(0)
-  
-  monthly_images_limit      Int @default(10)
-  monthly_videos_limit      Int @default(5)
-  monthly_minutes_tts       Int @default(10)
-  daily_requests_limit      Int @default(50)
-  daily_videos_limit        Int @default(2)
-  
-  features    Json?
-  
-  users       User[]
-  
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
-
-  @@map("plans")
-}
-
-model Account {
-  id                String  @id @default(uuid())
-  userId            String  @map("user_id")
-  type              String
-  provider          String
-  providerAccountId String  @map("provider_account_id")
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
- 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
- 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
- 
-  @@unique([provider, providerAccountId])
-  @@map("accounts")
-}
- 
-model Session {
-  id           String   @id @default(uuid())
-  sessionToken String   @unique @map("session_token")
-  userId       String   @map("user_id")
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
- 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
- 
-  @@map("sessions")
-}
- 
-model VerificationToken {
-  identifier String
-  token      String
-  expires    DateTime
- 
-  @@unique([identifier, token])
-  @@map("verification_tokens")
-}
-
-model ApiKey {
-  user_id        String   @id
-  gemini_key     String?
-  elevenlabs_key String?
-  suno_key       String?
-  groq_key       String?
-  updated_at     DateTime @default(now()) @updatedAt
-
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@map("api_keys")
-}
-
-model Show {
-  id          String   @id @default(uuid())
-  user_id     String
-  name        String
-  description String?   @db.Text
-
-  style_preset String?
-  visual_prompt String?  @db.Text
-
-  default_tts_provider TTSProvider @default(gemini)
-  
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
-
-  user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  characters Character[]
-  episodes   Project[]
-
-  @@index([user_id])
-  @@map("shows")
-}
-
-model Project {
-  id                            String        @id @default(uuid())
-  user_id                       String
-  topic                         String
-  style                         String
-  language                      String        @default("en")
-  voice_name                    String
-  tts_provider                  TTSProvider
-  reference_image_url           String?
-  reference_characters_snapshot Json?
-  video_model                   String        @default("veo")
-  audio_model                   String?
-  include_music                 Boolean       @default(false)
-  bg_music_prompt               String?
-  bg_music_url                  String?
-  bg_music_status               MusicStatus?
-  status                        ProjectStatus @default(draft)
-  generated_title               String?
-  generated_description         String?
-  duration_config               Json?
-  lock_session_id               String?
-  lock_expires_at               DateTime?
-  is_archived   Boolean       @default(false)
-  tags          String[]      @default([])
-  folder_id     String?
-  folder        Folder?       @relation(fields: [folder_id], references: [id])
-  created_at    DateTime      @default(now())
-  updated_at    DateTime      @default(now()) @updatedAt
-
-
-  show_id        String?
-  episode_number Int?
-  show           Show?   @relation(fields: [show_id], references: [id])
-
-  user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  scenes     Scene[]
-  usage_logs UsageLog[]
-  characters Character[] @relation("ProjectCharacters")
-
-  @@index([user_id])
-  @@index([show_id])
-  @@map("projects")
-}
-
-model Folder {
-  id        String   @id @default(uuid())
-  name      String
-  user_id   String
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  user     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  projects Project[]
-
-  @@unique([user_id, name])
-  @@index([user_id])
-  @@map("folders")
-}
-
-model Scene {
-  id                 String      @id @default(uuid())
-  project_id         String
-  scene_number       Int
-  visual_description String
-  narration          String
-  duration_seconds   Decimal     @db.Decimal(5, 2)
-  image_url          String?
-  image_status       SceneStatus @default(draft)
-  audio_url          String?
-  audio_status       SceneStatus @default(draft)
-  sfx_url            String?
-  sfx_status         SceneStatus @default(draft)
-  video_url          String?
-  video_status       SceneStatus @default(draft)
-  media_type         String      @default("image")
-  visual_effect      String      @default("zoom_in")
-  word_timings       Json?
-  error_message      String?
-  image_attempts     Int         @default(0)
-  audio_attempts     Int         @default(0)
-  sfx_attempts       Int         @default(0)
-  video_attempts     Int         @default(0)
-  created_at         DateTime    @default(now())
-  deleted_at         DateTime?
-
-
-  character_id String?
-  character    Character? @relation(fields: [character_id], references: [id])
-
-  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
-
-  status    String   @default("DRAFT")
-  version   Int      @default(0)
-  jobs      Job[]
-
-  @@index([project_id])
-  @@index([project_id, scene_number])
-  @@map("scenes")
-}
-
-model Job {
-  id          String   @id @default(cuid())
-  type        String   
-  status      String   @default("QUEUED") 
-  
-  inputPayload  Json   
-  outputResult  Json?  
-  errorMessage  String?
-
-  projectId   String
-  sceneId     String?
-  scene       Scene?   @relation(fields: [sceneId], references: [id])
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([status])
-  @@index([sceneId])
-}
-
-model UserLimits {
-  user_id                  String   @id
-  monthly_videos_limit     Int      @default(5)
-  monthly_minutes_tts      Int      @default(10)
-  monthly_images_limit     Int      @default(50)
-  current_videos_used      Int      @default(0)
-  current_minutes_tts_used Decimal  @default(0) @db.Decimal(10, 2)
-  current_images_used      Int      @default(0)
-  last_reset_date          DateTime @default(now())
-  
-  daily_requests_limit     Int      @default(100)
-  current_daily_requests   Int      @default(0)
-  last_daily_reset         DateTime @default(now())
-  
-  daily_videos_limit       Int      @default(1)
-  current_daily_videos     Int      @default(0)
-
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@map("user_limits")
-}
-
-model Character {
-  id          String   @id @default(uuid())
-  user_id     String
-  name        String
-  description String?
-  images      String[]
-  created_at  DateTime @default(now())
-
-
-  show_id        String?
-  show           Show?   @relation(fields: [show_id], references: [id])
-  
-  voice_provider TTSProvider?
-  voice_id       String?
-  voice_settings Json?
-
-  user     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  projects Project[] @relation("ProjectCharacters")
-  scenes   Scene[]
-
-  @@index([user_id])
-  @@map("characters")
-}
-
-
-model UsageLog {
-  id               String         @id @default(uuid())
-  user_id          String?
-  project_id       String?
-  action_type      UsageLogAction
-  provider         String
-  model_name       String
-  tokens_input     Int            @default(0)
-  tokens_output    Int            @default(0)
-  duration_seconds Decimal        @default(0) @db.Decimal(10, 2)
-  status           UsageLogStatus
-  error_message    String?
-  idempotency_key  String?        @unique
-  created_at       DateTime       @default(now())
-
-  user    User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
-  project Project? @relation(fields: [project_id], references: [id], onDelete: SetNull)
-
-  @@index([user_id])
-  @@index([project_id])
-  @@map("usage_logs")
 }

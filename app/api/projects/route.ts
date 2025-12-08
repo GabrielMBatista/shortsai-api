@@ -126,17 +126,31 @@ export async function POST(request: Request) {
                 bg_music_status: include_music ? 'pending' : null,
                 duration_config: duration_config || Prisma.JsonNull,
                 status: 'draft',
-                characters: {
-                    connect: characterIds?.map((id: string) => ({ id })) || [],
-                },
+                // Explicitly create relation records
+                ProjectCharacters: {
+                    create: characterIds?.map((id: string) => ({
+                        characters: { connect: { id } }
+                    })) || []
+                }
             },
-            include: { characters: true },
+            include: {
+                ProjectCharacters: {
+                    include: { characters: true }
+                }
+            },
         });
 
-        // Broadcast to admin dashboard
-        broadcastAdminUpdate('PROJECT_CREATED', project);
+        // Map back to expected structure
+        const mappedProject = {
+            ...project,
+            ProjectCharacters: undefined, // Remove the join table prop
+            characters: project.ProjectCharacters.map(pc => pc.characters)
+        };
 
-        return NextResponse.json(project);
+        // Broadcast to admin dashboard
+        broadcastAdminUpdate('PROJECT_CREATED', mappedProject);
+
+        return NextResponse.json(mappedProject);
     } catch (error: any) {
         console.error('Error creating project:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
@@ -171,15 +185,6 @@ export async function GET(request: Request) {
 
         if (isArchivedParam !== null) {
             where.is_archived = isArchivedParam === 'true';
-        } else {
-            // Default behavior: if not specified, usually we might want to show unarchived?
-            // But existing frontend logic sends is_archived=false explicitly for default view.
-            // If the frontend doesn't send it, we might want to default to false to hide archived projects?
-            // However, let's stick to what was requested. If param is missing, don't filter (or let frontend handle it).
-            // Actually, looking at previous frontend code, it was filtering client side.
-            // Best practice: Default to is_archived: false if not specified? 
-            // Let's rely on the explicit param from frontend for now to avoid breaking changes if 'all' is needed.
-            // But wait, the frontend sends `is_archived=${isArchived}` which is boolean.
         }
 
         const [projects, total] = await Promise.all([
@@ -203,6 +208,7 @@ export async function GET(request: Request) {
                     is_archived: true,
                     tags: true,
                     folder_id: true,
+                    // Include simplified scenes state
                     scenes: {
                         where: { deleted_at: null },
                         select: {
@@ -210,24 +216,39 @@ export async function GET(request: Request) {
                             scene_number: true,
                             image_status: true,
                             audio_status: true,
-                            // video_status and others if needed for status display
-                            video_status: true, 
+                            video_status: true,
                             media_type: true
                         },
                         orderBy: { scene_number: 'asc' }
+                    },
+                    // Include Characters via Explicit Table
+                    ProjectCharacters: {
+                        select: {
+                            characters: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    images: true,
+                                    description: true
+                                }
+                            }
+                        }
                     }
                 }
             }),
             prisma.project.count({ where })
         ]);
 
-        // If pagination is used, return wrapper. If not, return array for backward compatibility (or just always return wrapper if we update frontend simultaneously)
-        // The user explicitly asked for optimization, so let's standardise on the wrapper if limit is present.
-        // However, to be safe and consistent, let's check if limit was requested.
+        // Transform Results to flatten characters
+        const mappedProjects = projects.map(p => ({
+            ...p,
+            ProjectCharacters: undefined,
+            characters: p.ProjectCharacters.map(pc => pc.characters)
+        }));
 
         if (limit !== undefined) {
             return NextResponse.json({
-                data: projects,
+                data: mappedProjects,
                 meta: {
                     total,
                     limit,
@@ -236,7 +257,7 @@ export async function GET(request: Request) {
             });
         }
 
-        return NextResponse.json(projects);
+        return NextResponse.json(mappedProjects);
     } catch (error: any) {
         console.error('Error fetching projects:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

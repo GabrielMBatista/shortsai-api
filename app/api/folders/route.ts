@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 
 const createFolderSchema = z.object({
     name: z.string().min(1).max(50),
+    parent_id: z.string().optional().nullable(),
 });
 
 export async function POST(request: Request) {
@@ -23,13 +24,14 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Validation Error', details: validation.error.format() }, { status: 400 });
         }
 
-        const { name } = validation.data;
+        const { name, parent_id } = validation.data;
         const user_id = session.user.id;
 
         const folder = await prisma.folder.create({
             data: {
                 name,
                 user_id,
+                parent_id
             },
         });
 

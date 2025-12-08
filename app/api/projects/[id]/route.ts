@@ -43,7 +43,6 @@ export async function GET(
                 folder_id: true,
                 created_at: true,
                 updated_at: true,
-                // Excluding heavy base64 fields: reference_image_url, bg_music_url, etc.
 
                 scenes: {
                     where: { deleted_at: null },
@@ -70,20 +69,20 @@ export async function GET(
                         deleted_at: true,
                         status: true,
                         version: true
-                        // Excluding: image_url, audio_url, video_url, sfx_url
                     }
                 },
-                characters: {
+                ProjectCharacters: {
                     select: {
-                        id: true,
-                        name: true,
-                        description: true,
-                        // images: true // Include images? If they are small, ok. If base64, careful.
-                        // Usually character images are needed for context, but if they are large base64...
-                        // Let's assume they are needed for now as there is no lazy load for characters yet.
-                        images: true,
-                        user_id: true,
-                        created_at: true
+                        characters: {
+                            select: {
+                                id: true,
+                                name: true,
+                                description: true,
+                                images: true,
+                                user_id: true,
+                                created_at: true
+                            }
+                        }
                     }
                 },
             },
@@ -97,7 +96,13 @@ export async function GET(
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
-        return NextResponse.json(project);
+        const mappedProject = {
+            ...project,
+            ProjectCharacters: undefined,
+            characters: project.ProjectCharacters.map(pc => pc.characters)
+        };
+
+        return NextResponse.json(mappedProject);
     } catch (error: any) {
         console.error('Error fetching project:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
@@ -145,20 +150,37 @@ export async function PATCH(
 
         const updateData: any = { ...rest };
 
+        // Transaction handling for character updates if needed, since explicit relation requires separate Ops
+        // But prisma update 'data' handles nested writes? 
+        // For explicit Many-to-Many, we can use `deleteMany` then `create` or `set` isn't available directly on the explicit model wrapper usually in the same way.
+        // Actually, with explicit M-N, we might need a transaction: Delete old links, Create new links.
+        // Or using `ProjectCharacters: { deleteMany: {}, create: ... }`.
+
         if (characterIds && Array.isArray(characterIds)) {
-            // Use set to replace all existing characters with the new list
-            updateData.characters = {
-                set: characterIds.map((charId: string) => ({ id: charId })),
+            updateData.ProjectCharacters = {
+                deleteMany: {}, // Remove all existing
+                create: characterIds.map((charId: string) => ({
+                    characters: { connect: { id: charId } }
+                }))
             };
         }
 
         const project = await prisma.project.update({
             where: { id },
             data: updateData,
-            include: { characters: true, scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } } }
+            include: {
+                ProjectCharacters: { include: { characters: true } },
+                scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } }
+            }
         });
 
-        return NextResponse.json(project);
+        const mappedProject = {
+            ...project,
+            ProjectCharacters: undefined,
+            characters: project.ProjectCharacters.map(pc => pc.characters)
+        };
+
+        return NextResponse.json(mappedProject);
     } catch (error: any) {
         console.error('Error updating project:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

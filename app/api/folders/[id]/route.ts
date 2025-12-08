@@ -70,19 +70,53 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
             return NextResponse.json({ error: 'Folder not found or access denied' }, { status: 404 });
         }
 
-        // Optional: Move projects to root (null folder) before deleting, or cascade delete?
-        // Prisma schema doesn't have cascade delete on projects->folder, so projects will just have folder_id set to null if we don't handle it.
-        // Actually, if we delete the folder, we should probably just set project.folder_id to null.
-        // Let's explicitly do that to be safe, although SetNull on delete in schema would handle it if configured.
-        // Checking schema: folder Folder? @relation(fields: [folder_id], references: [id])
-        // No onDelete action specified, default is usually RESTRICT or NO ACTION in some DBs, but Prisma default depends.
-        // Let's manually unlink projects first.
+        // Helper to get all descendant folder IDs
+        const getAllDescendantIds = async (rootId: string): Promise<string[]> => {
+            const children = await prisma.folder.findMany({
+                where: { parent_id: rootId },
+                select: { id: true }
+            });
+            let ids = children.map(c => c.id);
+            for (const childId of ids) {
+                const subIds = await getAllDescendantIds(childId);
+                ids = [...ids, ...subIds];
+            }
+            return ids;
+        };
 
-        await prisma.project.updateMany({
-            where: { folder_id: id },
-            data: { folder_id: null },
+        const folderIdsToDelete = [id, ...(await getAllDescendantIds(id))];
+
+        // Fetch all projects in these folders to delete assets
+        const projectsToDelete = await prisma.project.findMany({
+            where: { folder_id: { in: folderIdsToDelete } },
+            select: {
+                bg_music_url: true,
+                scenes: {
+                    select: {
+                        image_url: true,
+                        audio_url: true,
+                        video_url: true,
+                        sfx_url: true,
+                    }
+                }
+            }
         });
 
+        // Delete Assets from R2
+        if (projectsToDelete.length > 0) {
+            const { deleteFromR2 } = await import('@/lib/storage');
+            for (const project of projectsToDelete) {
+                if (project.bg_music_url) await deleteFromR2(project.bg_music_url);
+                for (const scene of project.scenes) {
+                    if (scene.image_url) await deleteFromR2(scene.image_url);
+                    if (scene.audio_url) await deleteFromR2(scene.audio_url);
+                    if (scene.video_url) await deleteFromR2(scene.video_url);
+                    if (scene.sfx_url) await deleteFromR2(scene.sfx_url);
+                }
+            }
+        }
+
+        // Delete the root folder (Cascades to subfolders and projects in DB)
         await prisma.folder.delete({
             where: { id },
         });
