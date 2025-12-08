@@ -9,16 +9,16 @@ Este é o serviço backend para o ShortsAI Studio, construído com **Next.js App
 O sistema foi refatorado para alta escalabilidade:
 
 1.  **API (Next.js - VPS):** Gerencia lógica de negócios, banco de dados (PostgreSQL), usuários.
-2.  **Worker (Python - Google Cloud Run):** Microsserviço dedicado e serverless para renderização pesada de vídeos usando MoviePy + FFmpeg.
+2.  **Worker (Python - VPS):** Microsserviço dedicado para renderização pesada de vídeos usando MoviePy + FFmpeg, rodando no mesmo Docker Compose da API.
 
 A comunicação segue o fluxo:
-`Frontend -> API (Queue Job) -> Cloud Run (Render) -> Webhook (Status Update) -> API -> Frontend (Polling)`
+`Frontend -> API (Queue Job) -> Worker (Render) -> Webhook (Status Update) -> API -> Frontend (Polling)`
 
 ## ✨ Funcionalidades Principais
 
 *   **Orquestração de Workflow**: Gerencia tarefas de geração complexas (Roteiro -> Imagens -> Áudio -> Vídeo).
-*   **Worker Escalável**: Renderização de vídeos movida para o Google Cloud Run (ou VPS Docker).
-    > **Nota:** O uso do Cloud Run no nível gratuito (Free Tier) pode apresentar desempenho limitado (Cold Starts, CPU throttling) para renderização de vídeo. Para produção em alta escala, recomenda-se instâncias dedicadas.
+*   **Worker Server-Side**: Renderização de vídeos local (VPS) para evitar latência e custos.
+    > **Nota:** O código ainda suporta Google Cloud Run, mas foi descontinuado em produção devido à lentidão do Free Tier.
 *   **Controle de Concorrência**: Bloqueio de projeto e filas de processamento resilientes.
 *   **Atualizações em Tempo Real**: O frontend realiza polling eficiente para acompanhar o progresso.
 *   **R2 Storage**: Armazenamento de assets (vídeos, áudios, imagens) no Cloudflare R2 com zero custo de egresso.
@@ -27,7 +27,7 @@ A comunicação segue o fluxo:
 
 *   **API**: Next.js 15, PostgreSQL, Prisma.
 *   **Worker**: Python, FastAPI, MoviePy, Docker.
-*   **Infra**: Docker Compose (VPS), Google Cloud Run (Serverless).
+*   **Infra**: Docker Compose (VPS).
 
 ## 🚀 Começando
 
@@ -41,33 +41,30 @@ A comunicação segue o fluxo:
     ```bash
     cp .env.example .env
     # Preencha as credenciais do DB, R2 e IA.
-    # Adicione CLOUD_RUN_URL apontando para o worker (ou localhost:8080 para dev local)
+    # WORKER_URL=http://worker:8080 (Comunicação interna Docker)
     ```
 
 2.  Suba o ambiente local:
     ```bash
     docker-compose up -d --build
     ```
-    Isso subirá a API (3333), o Banco (5432) e o Worker (8080) se estiver rodando localmente.
+    Isso subirá API, Banco, Redis e Worker.
 
 ## ☁️ Deploy
 
-### API & Banco (VPS)
-O deploy da API é automatizado via **GitHub Actions** (`deploy.yml`). Ao fazer push na `master`, ele conecta na VPS via SSH, puxa o código e reinicia os containers `shortsai-api` e `db`.
+### Servidor Completo (VPS)
+O deploy é automatizado via **GitHub Actions**. O script `deploy.yml` atualiza e reinicia todos os containers (`api`, `worker`, `db`) definidos no `docker-compose.yml` da VPS.
 
-### Worker (Google Cloud Run)
-O deploy do Worker é automatizado via **GitHub Actions** (`deploy-worker.yml`). Ao alterar arquivos na pasta `worker/`:
-1.  Constrói a imagem Docker.
-2.  Envia para o Google Artifact Registry.
-3.  Atualiza o serviço no Cloud Run.
+### Worker (Cloud Run - Legado/Exemplo)
+Existe a possibilidade de deploy serverless (`deploy-worker.yml`), mas atualmente optamos pelo Worker no Docker Compose para melhor performance de I/O em vídeo.
 
 ### Configuração de Variáveis (VPS)
 No servidor de produção, o arquivo `.env` deve conter:
 ```ini
-CLOUD_RUN_URL=https://shortsai-worker-xyz.run.app
+WORKER_URL=http://shortsai-worker:8080
 WORKER_SECRET=sua_chave_segura
 ```
-Isso garante que a API saiba para onde despachar os jobs de vídeo.
+Isso garante que a API despache os jobs diretamente para o container do worker na mesma rede.
 
 ## 📚 Documentação
 

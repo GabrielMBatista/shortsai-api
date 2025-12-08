@@ -10,6 +10,10 @@ const createFolderSchema = z.object({
     parent_id: z.string().optional().nullable(),
 });
 
+import { cachedQuery, invalidateCache } from '@/lib/redis';
+
+// ... imports
+
 export async function POST(request: Request) {
     try {
         const session = await auth();
@@ -35,8 +39,12 @@ export async function POST(request: Request) {
             },
         });
 
+        // Invalidate fetching cache
+        await invalidateCache(`api:folders:${user_id}`);
+
         return NextResponse.json(folder);
     } catch (error: any) {
+        // ... (error handling remains same)
         // Handle unique constraint violation
         if (error.code === 'P2002') {
             return NextResponse.json({ error: 'Folder with this name already exists' }, { status: 409 });
@@ -55,30 +63,35 @@ export async function GET(request: Request) {
 
         const user_id = session.user.id;
 
-        const folders = await prisma.folder.findMany({
-            where: { user_id },
-            orderBy: { name: 'asc' },
-            include: {
-                _count: {
-                    select: {
-                        projects: {
-                            where: { is_archived: false }
+        const data = await cachedQuery(`api:folders:${user_id}`, async () => {
+            const folders = await prisma.folder.findMany({
+                where: { user_id },
+                orderBy: { name: 'asc' },
+                include: {
+                    _count: {
+                        select: {
+                            projects: {
+                                where: { is_archived: false }
+                            }
                         }
                     }
                 }
-            }
-        });
+            });
 
-        const rootCount = await prisma.project.count({
-            where: {
-                user_id,
-                folder_id: null,
-                is_archived: false
-            }
-        });
+            const rootCount = await prisma.project.count({
+                where: {
+                    user_id,
+                    folder_id: null,
+                    is_archived: false
+                }
+            });
 
-        return NextResponse.json({ folders, rootCount });
+            return { folders, rootCount };
+        }, 300); // 5 minutes cache
+
+        return NextResponse.json(data);
     } catch (error: any) {
+        // ...
         console.error('CRITICAL ERROR in GET /api/folders:', error);
         if (error instanceof Error) {
             console.error('Stack:', error.stack);
@@ -87,3 +100,4 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
     }
 }
+
