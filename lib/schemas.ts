@@ -13,6 +13,8 @@ export const createProjectSchema = z.object({
     bg_music_prompt: z.string().optional().nullable(),
     duration_config: z.any().optional(), // Can be refined later if structure is known
     folder_id: z.string().optional().nullable(),
+    generated_title: z.string().optional(),
+    generated_description: z.string().optional(),
 });
 
 export const updateProjectSchema = z.object({

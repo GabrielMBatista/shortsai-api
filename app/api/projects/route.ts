@@ -37,6 +37,8 @@ export async function POST(request: Request) {
             bg_music_prompt,
             duration_config,
             folder_id,
+            generated_title,
+            generated_description,
         } = validation.data;
 
         const user_id = session.user.id;
@@ -128,6 +130,8 @@ export async function POST(request: Request) {
                 duration_config: duration_config || Prisma.JsonNull,
                 status: 'draft',
                 folder_id,
+                generated_title,
+                generated_description,
                 // Explicitly create relation records
                 ProjectCharacters: {
                     create: characterIds?.map((id: string) => ({
