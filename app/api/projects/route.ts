@@ -36,6 +36,7 @@ export async function POST(request: Request) {
             include_music,
             bg_music_prompt,
             duration_config,
+            folder_id,
         } = validation.data;
 
         const user_id = session.user.id;
@@ -126,6 +127,7 @@ export async function POST(request: Request) {
                 bg_music_status: include_music ? 'pending' : null,
                 duration_config: duration_config || Prisma.JsonNull,
                 status: 'draft',
+                folder_id,
                 // Explicitly create relation records
                 ProjectCharacters: {
                     create: characterIds?.map((id: string) => ({

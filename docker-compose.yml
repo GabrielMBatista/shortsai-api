@@ -14,7 +14,7 @@ services:
     volumes:
       - ./pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432" # Mantenha fechado no Firewall do VPS para segurança
+      - "127.0.0.1:5432:5432" # Mantenha fechado no Firewall do VPS para segurança
     restart: always
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
@@ -31,7 +31,7 @@ services:
     image: redis:7-alpine
     container_name: shortsai-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     command: redis-server --appendonly yes
     restart: always
     volumes:

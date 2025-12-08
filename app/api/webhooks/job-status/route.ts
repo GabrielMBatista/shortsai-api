@@ -7,7 +7,12 @@ export async function POST(req: NextRequest) {
         const authHeader = req.headers.get('authorization');
         const workerSecret = process.env.WORKER_SECRET;
 
-        if (workerSecret && authHeader !== `Bearer ${workerSecret}`) {
+        if (!workerSecret) {
+            console.error('CRITICAL: WORKER_SECRET is not defined in environment variables');
+            return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+        }
+
+        if (authHeader !== `Bearer ${workerSecret}`) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
