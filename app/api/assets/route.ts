@@ -40,9 +40,11 @@ export async function GET(req: NextRequest) {
             throw new Error("R2_BUCKET_NAME not visible to API");
         }
 
+        const range = req.headers.get('range');
         const command = new GetObjectCommand({
             Bucket: process.env.R2_BUCKET_NAME,
             Key: objectKey,
+            Range: range || undefined,
         });
 
         const s3Response = await s3Client.send(command);
@@ -64,13 +66,27 @@ export async function GET(req: NextRequest) {
             throw new Error('Unable to convert stream to web stream');
         }
 
+        const headers: Record<string, string> = {
+            'Content-Type': s3Response.ContentType || 'application/octet-stream',
+            'Access-Control-Allow-Origin': '*', // CRITICAL for Canvas
+            'Cache-Control': 'public, max-age=31536000, immutable'
+        };
+
+        if (s3Response.ContentLength) {
+            headers['Content-Length'] = s3Response.ContentLength.toString();
+        }
+
+        if (s3Response.ContentRange) {
+            headers['Content-Range'] = s3Response.ContentRange;
+        }
+
+        if (s3Response.AcceptRanges) {
+            headers['Accept-Ranges'] = s3Response.AcceptRanges;
+        }
+
         return new NextResponse(webStream, {
-            headers: {
-                'Content-Type': s3Response.ContentType || 'application/octet-stream',
-                'Content-Length': s3Response.ContentLength?.toString() || '',
-                'Access-Control-Allow-Origin': '*', // CRITICAL for Canvas
-                'Cache-Control': 'public, max-age=31536000, immutable'
-            }
+            status: s3Response.$metadata.httpStatusCode || 200,
+            headers
         });
 
     } catch (error: any) {
