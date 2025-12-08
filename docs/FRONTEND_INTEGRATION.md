@@ -203,3 +203,37 @@ const exportVideo = async (scenes: Scene[]) => {
 - Processar assets com `fetch()` para manipulação binária
 - Exportar vídeos finais
 
+
+## 6. Social Media (Agendamento de Posts)
+Endpoints para gerenciar o agendamento de postagens em redes sociais.
+
+### Criar Agendamento
+`POST /api/social/posts`
+
+```typescript
+const schedulePost = async (
+    userId: string,
+    projectId: string,
+    platform: 'youtube' | 'tiktok' | 'instagram',
+    scheduledAt: string // ISO Date
+) => {
+    await fetch('/api/social/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            userId,
+            projectId,
+            platform,
+            scheduledAt
+        })
+    });
+};
+```
+
+### Listar Agendamentos
+`GET /api/social/posts?projectId={id}`
+
+### Atualizar/Cancelar
+`PATCH /api/social/posts/{id}`
+`DELETE /api/social/posts/{id}`
+

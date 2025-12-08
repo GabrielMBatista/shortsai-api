@@ -81,6 +81,7 @@ export const openApiSpec: OpenAPIObject = {
                     image_attempts: { type: 'integer' },
                     audio_attempts: { type: 'integer' },
                     sfx_attempts: { type: 'integer' },
+                    visual_effect: { type: 'string', description: 'Zoom/Pan effect (e.g. zoom_in, pan_right)' },
                 },
             },
             Character: {
@@ -138,7 +139,24 @@ export const openApiSpec: OpenAPIObject = {
                     id: { type: 'string', format: 'uuid' },
                     user_id: { type: 'string', format: 'uuid' },
                     name: { type: 'string' },
+                    parent_id: { type: 'string', format: 'uuid', nullable: true },
                     created_at: { type: 'string', format: 'date-time' },
+                },
+            },
+            SocialPost: {
+                type: 'object',
+                properties: {
+                    id: { type: 'string', format: 'uuid' },
+                    userId: { type: 'string', format: 'uuid' },
+                    projectId: { type: 'string', format: 'uuid' },
+                    platform: { type: 'string', enum: ['youtube', 'tiktok', 'instagram'] },
+                    title: { type: 'string' },
+                    description: { type: 'string' },
+                    privacyStatus: { type: 'string', enum: ['private', 'public', 'unlisted'] },
+                    status: { type: 'string', enum: ['draft', 'scheduled', 'published', 'failed'] },
+                    scheduledAt: { type: 'string', format: 'date-time', nullable: true },
+                    createdAt: { type: 'string', format: 'date-time' },
+                    updatedAt: { type: 'string', format: 'date-time' },
                 },
             },
         },
@@ -800,7 +818,10 @@ export const openApiSpec: OpenAPIObject = {
                             schema: {
                                 type: 'object',
                                 required: ['name'],
-                                properties: { name: { type: 'string' } },
+                                properties: {
+                                    name: { type: 'string' },
+                                    parent_id: { type: 'string', format: 'uuid', nullable: true }
+                                },
                             },
                         },
                     },
@@ -905,6 +926,97 @@ export const openApiSpec: OpenAPIObject = {
                             },
                         },
                     },
+                },
+            },
+        },
+        '/social/posts': {
+            get: {
+                summary: 'List Social Posts',
+                parameters: [
+                    { name: 'projectId', in: 'query', schema: { type: 'string' } },
+                    { name: 'userId', in: 'query', schema: { type: 'string' } },
+                ],
+                responses: {
+                    '200': {
+                        description: 'List of social posts',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'array',
+                                    items: { $ref: '#/components/schemas/SocialPost' },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            post: {
+                summary: 'Create Social Post',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['userId', 'projectId', 'platform'],
+                                properties: {
+                                    userId: { type: 'string' },
+                                    projectId: { type: 'string' },
+                                    platform: { type: 'string' },
+                                    title: { type: 'string' },
+                                    description: { type: 'string' },
+                                    scheduledAt: { type: 'string', format: 'date-time' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '201': { description: 'Social Post Created' },
+                },
+            },
+        },
+        '/social/posts/{id}': {
+            get: {
+                summary: 'Get Social Post',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                responses: {
+                    '200': { description: 'Social Post Details', content: { 'application/json': { schema: { $ref: '#/components/schemas/SocialPost' } } } },
+                },
+            },
+            patch: {
+                summary: 'Update Social Post',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    title: { type: 'string' },
+                                    description: { type: 'string' },
+                                    scheduledAt: { type: 'string', format: 'date-time' },
+                                    status: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    '200': { description: 'Social Post Updated' },
+                },
+            },
+            delete: {
+                summary: 'Delete Social Post',
+                parameters: [
+                    { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+                ],
+                responses: {
+                    '200': { description: 'Social Post Deleted' },
                 },
             },
         },

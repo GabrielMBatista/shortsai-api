@@ -77,6 +77,10 @@ Isso garante que a API saiba para onde despachar os jobs de vídeo.
   - Workflow e comandos
   - Polling de atualizações
   - Proxy de assets R2
+
+### Repositório Frontend
+Esta API serve o frontend **ShortsAI Studio**. 
+Para a aplicação completa, clone também: [https://github.com/seu-usuario/shortsai-studio](https://github.com/seu-usuario/shortsai-studio)
   - Geração de roteiro e análise de personagens
 
 - **[Worker Python](./worker/README.md)** - Microsserviço de renderização de vídeo
