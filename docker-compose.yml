@@ -25,6 +25,21 @@ services:
       - shortsai-network
 
   # ==============================
+  # DADOS EM MEMÓRIA (Redis)
+  # ==============================
+  redis:
+    image: redis:7-alpine
+    container_name: shortsai-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    restart: always
+    volumes:
+      - ./redisdata:/data
+    networks:
+      - shortsai-network
+
+  # ==============================
   # API (Next.js Backend)
   # ==============================
   shortsai-api:

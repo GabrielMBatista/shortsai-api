@@ -79,7 +79,11 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ folders, rootCount });
     } catch (error: any) {
-        console.error('Error fetching folders:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        console.error('CRITICAL ERROR in GET /api/folders:', error);
+        if (error instanceof Error) {
+            console.error('Stack:', error.stack);
+            console.error('Message:', error.message);
+        }
+        return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
     }
 }

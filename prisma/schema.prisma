@@ -33,6 +33,7 @@ model User {
   sessions                Session[]
   shows                   Show[]
   usage_logs              UsageLog[]
+  social_posts            SocialPost[]
   user_limits             UserLimits?
   plan                    Plan?            @relation(fields: [plan_id], references: [id])
 
@@ -166,6 +167,7 @@ model Project {
   user                          User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
   scenes                        Scene[]
   usage_logs                    UsageLog[]
+  social_posts                  SocialPost[]
 
   @@index([user_id])
   @@index([show_id])
@@ -212,6 +214,7 @@ model Scene {
   word_timings       Json?
   video_status       SceneStatus @default(draft)
   video_url          String?
+  visual_effect      String      @default("zoom_in")
   video_attempts     Int         @default(0)
   media_type         String      @default("image")
   status             String      @default("DRAFT")
@@ -304,6 +307,42 @@ model UsageLog {
   @@map("usage_logs")
 }
 
+model SocialPost {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  projectId       String    @map("project_id")
+
+  // Platform Info
+  platform        SocialPlatform 
+  accountId       String?   @map("account_id") // ID da conta conectada (tabela Account)
+
+  // Metadata
+  title           String?
+  description     String?   @db.Text
+  tags            String[]
+  privacyStatus   PrivacyStatus @default(PRIVATE)
+
+  // Scheduling
+  scheduledAt     DateTime? @map("scheduled_at")
+  publishedAt     DateTime? @map("published_at")
+
+  // Status
+  status          PostStatus @default(DRAFT)
+  error           String?
+
+  // External IDs
+  externalId      String?   // YouTube Video ID
+
+  // Relations
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("social_posts")
+}
+
 model ProjectCharacters {
   A          String
   B          String
@@ -377,4 +416,24 @@ enum UsageLogStatus {
 enum Role {
   USER
   ADMIN
+}
+
+enum SocialPlatform {
+  YOUTUBE
+  TIKTOK
+  INSTAGRAM
+}
+
+enum PrivacyStatus {
+  PRIVATE
+  UNLISTED
+  PUBLIC
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
 }
