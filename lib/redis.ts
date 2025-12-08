@@ -7,6 +7,25 @@ const getRedisUrl = () => {
     return 'redis://localhost:6379';
 };
 
+// Helper to parse Redis URL for BullMQ connection options
+const getUrlOptions = () => {
+    if (!process.env.REDIS_URL) return {};
+    try {
+        const url = new URL(process.env.REDIS_URL);
+        return {
+            host: url.hostname,
+            port: parseInt(url.port || '6379'),
+            password: url.password ? decodeURIComponent(url.password) : undefined,
+            username: url.username ? decodeURIComponent(url.username) : undefined,
+        };
+    } catch (e) {
+        console.warn('Invalid REDIS_URL:', e);
+        return {};
+    }
+};
+
+const urlOptions = getUrlOptions();
+
 // Singleton Redis connection for BullMQ
 // We need separate connections for Publisher and Subscriber in BullMQ usually,
 // but BullMQ manages its own connections if we pass connection options.
@@ -17,9 +36,10 @@ export const redis = new Redis(getRedisUrl(), {
 });
 
 export const connectionOptions = {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    password: process.env.REDIS_PASSWORD,
+    host: process.env.REDIS_HOST || urlOptions.host || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || String(urlOptions.port || '6379')),
+    password: process.env.REDIS_PASSWORD || urlOptions.password,
+    username: process.env.REDIS_USERNAME || urlOptions.username,
 };
 
 /**

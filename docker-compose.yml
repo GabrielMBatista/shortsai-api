@@ -52,6 +52,10 @@ services:
     environment:
       # Conexão interna com o banco via nome do serviço 'db'
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-shortsai}
+      # Redis Connection
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       # Ajuste para seu domínio real ou IP
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://srv1161960.hstgr.cloud}
       AUTH_SECRET: ${AUTH_SECRET:-supersecret}
@@ -63,6 +67,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       shortsai-network:
         aliases:
