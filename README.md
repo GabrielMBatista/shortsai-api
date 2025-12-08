@@ -73,7 +73,7 @@ Isso garante que a API saiba para onde despachar os jobs de vídeo.
 
 ### Guias Disponíveis
 
-- **[Integração Frontend](./FRONTEND_INTEGRATION.md)** - Guia completo de integração entre Frontend e API
+- **[Integração Frontend](./docs/FRONTEND_INTEGRATION.md)** - Guia completo de integração entre Frontend e API
   - Workflow e comandos
   - Polling de atualizações
   - Proxy de assets R2
