@@ -71,6 +71,7 @@ export class VideoService {
                                 - NO personally identifiable information.
                                 - REPLACE names of religious figures (e.g. Jesus) or famous people with generic visual descriptions (e.g. 'a bearded man in robes').
                                 - Ensure the subject stays in frame and does NOT turn their back unless explicitly requested.
+                                - Do NOT add people, characters, or animals if they are not explicitly described in the input.
                                 Output ONLY the prompt: "${prompt}"`
                             }
                         ]
