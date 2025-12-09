@@ -1,13 +1,25 @@
 import { prisma } from '../../prisma';
-import { Project, Scene, SceneStatus, MusicStatus } from '@prisma/client';
+import { Project, Scene, SceneStatus, MusicStatus, Prisma } from '@prisma/client';
 import { broadcastProjectUpdate } from '@/lib/sse/sse-service';
+
+const projectWithScenes = Prisma.validator<Prisma.ProjectDefaultArgs>()({
+    include: {
+        scenes: { include: { characters: true } },
+        ProjectCharacters: { include: { characters: true } }
+    }
+});
+
+type ProjectWithScenes = Prisma.ProjectGetPayload<typeof projectWithScenes>;
 
 export class WorkflowStateService {
 
-    static async getProjectWithScenes(projectId: string) {
+    static async getProjectWithScenes(projectId: string): Promise<ProjectWithScenes | null> {
         return prisma.project.findUnique({
             where: { id: projectId },
-            include: { scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } } }
+            include: {
+                scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' }, include: { characters: true } },
+                ProjectCharacters: { include: { characters: true } }
+            }
         });
     }
 
@@ -112,7 +124,7 @@ export class WorkflowStateService {
         const isProcessing = project.scenes.some(s =>
             s.image_status === 'processing' || s.image_status === 'loading' || s.image_status === 'queued' || s.image_status === 'pending' ||
             s.audio_status === 'processing' || s.audio_status === 'loading' || s.audio_status === 'queued' || s.audio_status === 'pending' ||
-            (s as any).video_status === 'processing' || (s as any).video_status === 'loading' || (s as any).video_status === 'queued' ||
+            s.video_status === 'processing' || s.video_status === 'loading' || s.video_status === 'queued' ||
             project.bg_music_status === 'loading' || project.bg_music_status === 'queued' || project.bg_music_status === 'pending'
         );
 
@@ -132,9 +144,9 @@ export class WorkflowStateService {
                 visualDescription: s.visual_description,
                 narration: s.narration,
                 durationSeconds: s.duration_seconds,
-                videoStatus: (s as any).video_status,
-                videoUrl: (s as any).video_url,
-                mediaType: (s as any).media_type
+                videoStatus: s.video_status,
+                videoUrl: s.video_url,
+                mediaType: s.media_type
             })),
             bgMusicStatus: project.bg_music_status,
             bgMusicUrl: project.bg_music_url

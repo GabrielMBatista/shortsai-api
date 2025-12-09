@@ -3,11 +3,14 @@ import { executeRequest } from '../core/executor';
 import { trackUsage } from '../core/usage-tracker';
 import { HarmCategory, HarmBlockThreshold } from "@google/genai";
 
+
+import { generateImagePrompt, analyzeCharacterPrompt, optimizeCharacterPrompt } from '../prompts/image-prompts';
+
 export class ImageService {
     static async generateImage(userId: string, prompt: string, style: string, keys?: { gemini?: string }): Promise<string> {
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId, keys?.gemini);
 
-        const fullPrompt = `Create a vertical (9:16) image in the style of ${style}. Scene: ${prompt}. \n\nIMPORTANT: Return ONLY the generated image. Do not provide any text description or conversational response.`;
+        const fullPrompt = generateImagePrompt(style, prompt);
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
@@ -46,7 +49,7 @@ export class ImageService {
     static async analyzeCharacterFeatures(userId: string, base64Image: string, keys?: { gemini?: string }): Promise<string> {
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId, keys?.gemini);
         const base64Data = base64Image.split(',')[1];
-        const prompt = `Analyze this character portrait. Describe the FACE in extreme detail for a stable diffusion prompt. Focus on: Skin tone, Eye color/shape, Hair style/color, Facial structure. Ignore clothing/background. Output a comma-separated list of visual adjectives.`;
+        const prompt = analyzeCharacterPrompt;
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
@@ -70,7 +73,7 @@ export class ImageService {
     static async optimizeReferenceImage(userId: string, base64ImageUrl: string, keys?: { gemini?: string }): Promise<string> {
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId, keys?.gemini);
         const base64Data = base64ImageUrl.split(',')[1];
-        const prompt = `Generate a NEW image of ONLY the character's FACE and HAIR (Headshot). IGNORE original clothing. Solid WHITE background. 1:1 Aspect Ratio.`;
+        const prompt = optimizeCharacterPrompt;
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({

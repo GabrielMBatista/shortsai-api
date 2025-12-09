@@ -3,6 +3,7 @@ import { executeRequest } from '../core/executor';
 import { trackUsage } from '../core/usage-tracker';
 import { RateLimiter } from '../core/rate-limiter';
 import { wait } from '../core/queue';
+import { refineAnimationPrompt, generateVideoPrompt } from '../prompts/video-prompts';
 
 export const VEO_MODELS = {
     'veo-2': 'veo-2.0-generate-001',           // 50 RPD - Best for high volume
@@ -62,17 +63,7 @@ export class VideoService {
                         role: "user",
                         parts: [
                             {
-                                text: `Create a concise (under 40 words) cinematic animation prompt based on this visual description. Focus on movement, camera angle and atmosphere. 
-                                IMPORTANT: Ensure the output is completely safe and strictly adheres to safety guidelines. 
-                                - NO children or minors.
-                                - NO prominent real-world people or celebrities.
-                                - NO violence, gore, weapons, or dangerous activities.
-                                - NO sexual content, nudity, or toxic language.
-                                - NO personally identifiable information.
-                                - REPLACE names of religious figures (e.g. Jesus) or famous people with generic visual descriptions (e.g. 'a bearded man in robes').
-                                - Ensure the subject stays in frame and does NOT turn their back unless explicitly requested.
-                                - Do NOT add people, characters, or animals if they are not explicitly described in the input.
-                                Output ONLY the prompt: "${prompt}"`
+                                text: refineAnimationPrompt(prompt)
                             }
                         ]
                     }
@@ -105,7 +96,7 @@ export class VideoService {
                     body: JSON.stringify({
                         instances: [
                             {
-                                prompt: `Cinematic slow motion animation of this image. Ambient movement, high quality video background. ${animationPrompt}`,
+                                prompt: generateVideoPrompt(animationPrompt),
                                 image: {
                                     bytesBase64Encoded: base64Data,
                                     mimeType: mimeType,

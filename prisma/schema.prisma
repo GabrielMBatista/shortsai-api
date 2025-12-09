@@ -219,9 +219,9 @@ model Scene {
   media_type         String      @default("image")
   status             String      @default("DRAFT")
   version            Int         @default(0)
-  character_id       String?
+  characters         Character[] @relation("SceneToCharacter")
+  
   jobs               Job[]
-  character          Character?  @relation(fields: [character_id], references: [id])
   project            Project     @relation(fields: [project_id], references: [id], onDelete: Cascade)
 
   @@index([project_id])
@@ -279,7 +279,7 @@ model Character {
   ProjectCharacters ProjectCharacters[]
   show              Show?               @relation(fields: [show_id], references: [id])
   user              User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  scenes            Scene[]
+  scenes            Scene[]             @relation("SceneToCharacter")
 
   @@index([user_id])
   @@map("characters")

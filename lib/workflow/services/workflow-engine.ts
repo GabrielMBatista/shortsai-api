@@ -103,10 +103,36 @@ export class WorkflowEngine {
             for (const scene of project.scenes) {
                 if (scene.image_status === SceneStatus.queued) {
                     await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'image', SceneStatus.processing);
+                    let prompt = scene.visual_description;
+
+                    // 1. Explicit Assignment (Strongest Rule - Supports Many)
+                    const explicitChars = (scene as any).characters || [];
+
+                    if (explicitChars.length > 0) {
+                        const charDescriptions = explicitChars.map((c: any) => `(${c.name}: ${c.description})`).join(' ');
+                        prompt = `Characters details: ${charDescriptions}. Scene: ${scene.visual_description}`;
+                    }
+                    // 2. Name Matching (Fallback)
+                    else {
+                        const projectChars = (project as any).ProjectCharacters?.map((pc: any) => pc.characters) || [];
+                        const matchedChars = projectChars.filter((c: any) =>
+                            c.name && scene.visual_description.toLowerCase().includes(c.name.toLowerCase())
+                        );
+
+                        if (matchedChars.length > 0) {
+                            const charDescriptions = matchedChars.map((c: any) => `(${c.name}: ${c.description})`).join(' ');
+                            prompt = `Characters details: ${charDescriptions}. Scene: ${scene.visual_description}`;
+                        }
+                    }
+
                     taskToTrigger = {
                         id: `task-${scene.id}-image-${Date.now()}`,
                         projectId, sceneId: scene.id, action: 'generate_image',
-                        params: { prompt: scene.visual_description, width: 1080, height: 1920 },
+                        params: {
+                            prompt,
+                            width: 1080,
+                            height: 1920
+                        },
                         status: 'pending', createdAt: new Date(), apiKeys
                     };
                     break;
@@ -175,10 +201,36 @@ export class WorkflowEngine {
                 for (const scene of project.scenes) {
                     if (scene.image_status === SceneStatus.pending) {
                         await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'image', SceneStatus.processing);
+                        let prompt = scene.visual_description;
+
+                        // 1. Explicit Assignment (Strongest Rule - Supports Many)
+                        const explicitChars = (scene as any).characters || [];
+
+                        if (explicitChars.length > 0) {
+                            const charDescriptions = explicitChars.map((c: any) => `(${c.name}: ${c.description})`).join(' ');
+                            prompt = `Characters details: ${charDescriptions}. Scene: ${scene.visual_description}`;
+                        }
+                        // 2. Name Matching (Fallback)
+                        else {
+                            const projectChars = (project as any).ProjectCharacters?.map((pc: any) => pc.characters) || [];
+                            const matchedChars = projectChars.filter((c: any) =>
+                                c.name && scene.visual_description.toLowerCase().includes(c.name.toLowerCase())
+                            );
+
+                            if (matchedChars.length > 0) {
+                                const charDescriptions = matchedChars.map((c: any) => `(${c.name}: ${c.description})`).join(' ');
+                                prompt = `Characters details: ${charDescriptions}. Scene: ${scene.visual_description}`;
+                            }
+                        }
+
                         taskToTrigger = {
                             id: `task-${scene.id}-image-${Date.now()}`,
                             projectId, sceneId: scene.id, action: 'generate_image',
-                            params: { prompt: scene.visual_description, width: 1080, height: 1920 },
+                            params: {
+                                prompt,
+                                width: 1080,
+                                height: 1920
+                            },
                             status: 'pending', createdAt: new Date(), apiKeys
                         };
                         break;

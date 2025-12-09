@@ -2,11 +2,12 @@ import { KeyManager } from '../core/key-manager';
 import { executeRequest } from '../core/executor';
 import { trackUsage } from '../core/usage-tracker';
 import { wait } from '../core/queue';
+import { generateMusicPromptRaw } from '../prompts/music-prompts';
 
 export class MusicService {
     static async generateMusicPrompt(userId: string, topic: string, style: string, keys?: { gemini?: string }): Promise<string> {
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId, keys?.gemini);
-        const prompt = `Create a text-to-audio prompt for Suno AI. Topic: "${topic}". Style: "${style}". Output: Max 25 words, include "instrumental, no vocals".`;
+        const prompt = generateMusicPromptRaw(topic, style);
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
