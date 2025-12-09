@@ -3,56 +3,63 @@ import { VideoService } from "@/lib/ai/services/video-service";
 import { JobStatus, JobType, SceneStatus } from "@/lib/constants/job-status";
 
 // --- Rate Limited Queue Implementation ---
-const queue: string[] = [];
-let processingQueue = false;
-const executionTimestamps: number[] = [];
-const RATE_LIMIT_COUNT = 2; // Max 2 jobs
-const RATE_LIMIT_WINDOW_MS = 60 * 1000; // Per 1 minute
+// --- User-Isolated Rate Limited Queues ---
+// Maps userId -> Queue of JobIDs
+const userQueues = new Map<string, string[]>();
+// Maps userId -> Execution Timestamps
+const userTimestamps = new Map<string, number[]>();
+// Maps userId -> Processing Flag
+const processingFlags = new Map<string, boolean>();
 
-async function processQueue() {
-    if (processingQueue) return;
-    processingQueue = true;
+const RATE_LIMIT_COUNT = 1;
+const RATE_LIMIT_WINDOW_MS = 40 * 1000;
+
+async function processUserQueue(userId: string) {
+    if (processingFlags.get(userId)) return;
+    processingFlags.set(userId, true);
+
+    const queue = userQueues.get(userId) || [];
+    const timestamps = userTimestamps.get(userId) || [];
 
     try {
         while (queue.length > 0) {
             const now = Date.now();
 
-            // 1. Clean up old timestamps (outside the window)
-            while (executionTimestamps.length > 0 && executionTimestamps[0] <= now - RATE_LIMIT_WINDOW_MS) {
-                executionTimestamps.shift();
+            // 1. Clean up old timestamps
+            while (timestamps.length > 0 && timestamps[0] <= now - RATE_LIMIT_WINDOW_MS) {
+                timestamps.shift();
             }
 
-            // 2. Check if we have slots available
-            if (executionTimestamps.length < RATE_LIMIT_COUNT) {
+            // 2. Check slots
+            if (timestamps.length < RATE_LIMIT_COUNT) {
                 const jobId = queue.shift();
                 if (jobId) {
-                    // Record execution time
-                    executionTimestamps.push(Date.now());
-
-                    // Run job (don't await completion here to allow parallelism if limit > 1)
-                    processJob(jobId).catch(err => console.error(`[Queue] Job ${jobId} failed:`, err));
+                    timestamps.push(Date.now());
+                    // Run job (async, don't block loop heavily)
+                    processJob(jobId, userId).catch(err => console.error(`[Queue] Job ${jobId} failed:`, err));
                 }
             } else {
-                // 3. Wait for the next slot to open
-                const oldestTimestamp = executionTimestamps[0];
-                const waitTime = (oldestTimestamp + RATE_LIMIT_WINDOW_MS) - now + 100; // +100ms buffer
+                // 3. Wait
+                const oldestTimestamp = timestamps[0];
+                const waitTime = (oldestTimestamp + RATE_LIMIT_WINDOW_MS) - now + 100;
 
                 if (waitTime > 0) {
-                    console.log(`[Queue] Rate limit reached. Waiting ${Math.ceil(waitTime / 1000)}s...`);
+                    // console.log(`[Queue ${userId}] Waiting ${Math.ceil(waitTime/1000)}s...`);
                     await new Promise(resolve => setTimeout(resolve, waitTime));
                 }
             }
         }
     } catch (e) {
-        console.error("[Queue] Error processing queue:", e);
+        console.error(`[Queue] Error processing queue for ${userId}:`, e);
     } finally {
-        processingQueue = false;
+        processingFlags.set(userId, false);
+        // Persist state updates back to map (arrays are ref but good practice)
+        userTimestamps.set(userId, timestamps);
     }
 }
 // -----------------------------------------
 
 export async function createVideoJob(sceneId: string, projectId: string, payload: any) {
-    // 1. Cria o registro da intenção
     const job = await prisma.job.create({
         data: {
             type: JobType.VIDEO_GENERATION,
@@ -63,15 +70,20 @@ export async function createVideoJob(sceneId: string, projectId: string, payload
         }
     });
 
-    // 2. Enfileira o job em vez de processar imediatamente
-    console.log(`[Queue] Enqueueing job ${job.id} for rate-limited processing`);
-    queue.push(job.id);
-    processQueue();
+    const userId = payload.userId || 'anonymous';
+
+    // Add to user-specific queue
+    if (!userQueues.has(userId)) userQueues.set(userId, []);
+    userQueues.get(userId)?.push(job.id);
+
+    console.log(`[Queue] Job ${job.id} added to queue for user ${userId}`);
+    processUserQueue(userId);
 
     return job;
 }
 
-async function processJob(jobId: string) {
+// Helper function defined last to handle hoisting usage above
+async function processJob(jobId: string, userId: string) {
     try {
         // Marca como processando
         await prisma.job.update({
@@ -82,9 +94,8 @@ async function processJob(jobId: string) {
         const job = await prisma.job.findUnique({ where: { id: jobId } });
         if (!job) return;
 
-        // --- SUA LÓGICA PESADA ANTIGA AQUI ---
         console.log('[Job Runner] Processing job with payload:', JSON.stringify(job.inputPayload, null, 2));
-        let { userId, imageUrl, prompt, keys, modelId, withAudio } = job.inputPayload as any;
+        let { imageUrl, prompt, keys, modelId, withAudio } = job.inputPayload as any;
 
         // If imageUrl is missing (e.g. removed to avoid 413), fetch from Scene
         if (!imageUrl && job.sceneId) {
@@ -96,7 +107,6 @@ async function processJob(jobId: string) {
             }
         }
 
-        // Call the existing VideoService
         // Call the existing VideoService
         let videoUrl = await VideoService.generateVideo(
             userId,
@@ -120,14 +130,9 @@ async function processJob(jobId: string) {
             }
         } catch (error) {
             console.error('[Job Runner] Failed to upload video to R2:', error);
-            // Continue with base64 if upload fails, or throw? 
-            // Better to keep base64 than lose data, but DB might reject if too large.
-            // Let's proceed, as the user emphasized "recovering" (reading), but saving is also important.
         }
-        // -------------------------------------
 
         // Transação Atômica: Atualiza Job E Cena juntos
-        // Timeout increased to 10 minutes to handle long video generation
         await prisma.$transaction(async (tx) => {
             // Finaliza Job
             await tx.job.update({
@@ -145,14 +150,14 @@ async function processJob(jobId: string) {
                     data: {
                         video_url: videoUrl,
                         video_status: SceneStatus.COMPLETED,
-                        status: "READY",           // Update new string status
+                        status: "READY",
                         version: { increment: 1 },
-                        media_type: "video"        // Auto-switch to video
+                        media_type: "video"
                     }
                 });
             }
         }, {
-            timeout: 600000 // 10 minutes timeout for video generation
+            timeout: 600000
         });
 
         // Broadcast update via SSE
@@ -170,6 +175,31 @@ async function processJob(jobId: string) {
 
     } catch (error: any) {
         console.error(`Erro no Job ${jobId}:`, error);
+
+        // --- Auto-Retry for Rate Limits (429) ---
+        if (error.message && (error.message.includes('429') || error.message.includes('quota') || error.message.includes('Quota'))) {
+            console.warn(`[Job Runner] Job ${jobId} hit Rate Limit (429). Re-queuing in 65s...`);
+
+            // Reset to QUEUED in DB
+            await prisma.job.update({
+                where: { id: jobId },
+                data: { status: JobStatus.QUEUED }
+            });
+
+            // Re-add to queue after delay
+            setTimeout(() => {
+                console.log(`[Job Runner] Retrying job ${jobId} now.`);
+                const uQueue = userQueues.get(userId);
+                if (uQueue) {
+                    uQueue.unshift(jobId); // Priority
+                    processUserQueue(userId);
+                }
+            }, 65000);
+
+            return; // Don't fail the job
+        }
+        // ----------------------------------------
+
         await prisma.job.update({
             where: { id: jobId },
             data: {
