@@ -68,7 +68,14 @@ export async function GET(
                         created_at: true,
                         deleted_at: true,
                         status: true,
-                        version: true
+                        version: true,
+                        characters: {
+                            select: {
+                                id: true,
+                                name: true,
+                                images: true
+                            }
+                        }
                     }
                 },
                 ProjectCharacters: {
@@ -170,7 +177,11 @@ export async function PATCH(
             data: updateData,
             include: {
                 ProjectCharacters: { include: { characters: true } },
-                scenes: { where: { deleted_at: null }, orderBy: { scene_number: 'asc' } }
+                scenes: {
+                    where: { deleted_at: null },
+                    orderBy: { scene_number: 'asc' },
+                    include: { characters: true }
+                }
             }
         });
 
