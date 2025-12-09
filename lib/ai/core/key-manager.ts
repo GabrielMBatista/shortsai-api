@@ -25,8 +25,7 @@ export class KeyManager {
 
     static async getGeminiClient(userId: string, providedKey?: string): Promise<{ client: GoogleGenAI, isSystem: boolean }> {
         const { key, isSystem } = await this.getGeminiKey(userId, providedKey);
-        // Explicitly use v1beta to ensure access to the latest models (Imagen 4, Gemini 2.5)
-        return { client: new GoogleGenAI({ apiKey: key, apiVersion: 'v1beta' }), isSystem };
+        return { client: new GoogleGenAI({ apiKey: key }), isSystem };
     }
 
     static async getElevenLabsKey(userId: string, providedKey?: string): Promise<{ key: string, isSystem: boolean }> {

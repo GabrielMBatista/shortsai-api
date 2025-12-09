@@ -13,7 +13,6 @@ export class ImageService {
         const fullPrompt = generateImagePrompt(style, prompt);
 
         return executeRequest(isSystem, async () => {
-            // Reverting to stable Imagen 3.0 as Imagen 4.0 (v1beta) is returning 404 errors on public endpoints
             const response = await ai.models.generateContent({
                 model: 'imagen-3.0-generate-001',
                 contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
