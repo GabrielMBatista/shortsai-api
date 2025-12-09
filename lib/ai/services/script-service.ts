@@ -51,6 +51,9 @@ export class ScriptService {
                 return {
                     videoTitle: json.videoTitle || json.title || topic,
                     videoDescription: json.videoDescription || json.description || `Video about ${topic}`,
+                    shortsHashtags: json.shortsHashtags || [],
+                    tiktokText: json.tiktokText || "",
+                    tiktokHashtags: json.tiktokHashtags || [],
                     scenes: normalizedScenes
                 };
             } catch (e) {
