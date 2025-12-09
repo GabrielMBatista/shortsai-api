@@ -132,10 +132,42 @@ export class RateLimiter {
         const lastReset = new Date(limits.last_daily_reset);
         const isNewDay = today.getDate() !== lastReset.getDate() || today.getMonth() !== lastReset.getMonth();
 
-        // Determine limit based on model
-        let dailyLimit = 10; // Default / Veo 3
-        if (modelId.includes('veo-2.0')) {
-            dailyLimit = 50;
+        // 3. Determine Limit based on User Plan
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            include: { plan: true }
+        });
+
+        let planDailyVideoLimit = 0;
+        let planMonthlyVideoLimit = 0;
+
+        if (user?.plan) {
+            planDailyVideoLimit = user.plan.daily_videos_limit;
+            planMonthlyVideoLimit = user.plan.monthly_videos_limit;
+        }
+        else if (user?.subscription_plan === 'PRO') {
+            const proPlan = await prisma.plan.findUnique({ where: { slug: 'pro' } });
+            if (proPlan) {
+                planDailyVideoLimit = proPlan.daily_videos_limit;
+                planMonthlyVideoLimit = proPlan.monthly_videos_limit;
+            } else {
+                planDailyVideoLimit = 500;
+                planMonthlyVideoLimit = 100;
+            }
+        }
+        else if (user?.subscription_plan === 'FREE') {
+            const freePlan = await prisma.plan.findUnique({ where: { slug: 'free' } });
+            if (freePlan) {
+                planDailyVideoLimit = freePlan.daily_videos_limit;
+                planMonthlyVideoLimit = freePlan.monthly_videos_limit;
+            } else {
+                planDailyVideoLimit = 2;
+                planMonthlyVideoLimit = 5;
+            }
+        }
+
+        if (planDailyVideoLimit === 0 && planMonthlyVideoLimit === 0) {
+            throw new Error("Access Denied: No active subscription plan found.");
         }
 
         if (isNewDay) {
@@ -143,17 +175,25 @@ export class RateLimiter {
                 where: { user_id: userId },
                 data: {
                     current_daily_requests: 0,
-                    current_daily_videos: 1, // Count this one
+                    current_daily_videos: 1,
                     last_daily_reset: today
                 }
             });
         } else {
-            if (limits.current_daily_videos >= dailyLimit) {
-                throw new Error(`Daily video limit exceeded for ${modelId} (${dailyLimit}/day).`);
+            if (limits.current_daily_videos >= planDailyVideoLimit) {
+                throw new Error(`Daily video limit exceeded for your plan (${planDailyVideoLimit}/day). Upgrade to Pro for more.`);
             }
+
+            if (limits.current_videos_used >= planMonthlyVideoLimit) {
+                throw new Error(`Monthly video limit exceeded for your plan (${planMonthlyVideoLimit}/month). Upgrade to Pro for more.`);
+            }
+
             await prisma.userLimits.update({
                 where: { user_id: userId },
-                data: { current_daily_videos: { increment: 1 } }
+                data: {
+                    current_daily_videos: { increment: 1 },
+                    current_videos_used: { increment: 1 }
+                }
             });
         }
     }

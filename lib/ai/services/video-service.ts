@@ -7,8 +7,8 @@ import { refineAnimationPrompt, generateVideoPrompt } from '../prompts/video-pro
 
 export const VEO_MODELS = {
     'veo-2': 'veo-2.0-generate-001',           // 50 RPD - Best for high volume
-    'veo-3': 'veo-3.0-generate-preview',           // 10 RPD - Higher quality
-    'veo-3-fast': 'veo-3.0-fast-generate-preview', // 10 RPD - Faster generation
+    'veo-3': 'veo-3.0-generate-001',           // 10 RPD - Higher quality
+    'veo-3-fast': 'veo-3.0-fast-generate-001', // 10 RPD - Faster generation
 } as const;
 
 export type VeoModelType = keyof typeof VEO_MODELS;
