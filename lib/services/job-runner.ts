@@ -2,6 +2,55 @@ import { prisma } from "@/lib/prisma";
 import { VideoService } from "@/lib/ai/services/video-service";
 import { JobStatus, JobType, SceneStatus } from "@/lib/constants/job-status";
 
+// --- Rate Limited Queue Implementation ---
+const queue: string[] = [];
+let processingQueue = false;
+const executionTimestamps: number[] = [];
+const RATE_LIMIT_COUNT = 2; // Max 2 jobs
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // Per 1 minute
+
+async function processQueue() {
+    if (processingQueue) return;
+    processingQueue = true;
+
+    try {
+        while (queue.length > 0) {
+            const now = Date.now();
+
+            // 1. Clean up old timestamps (outside the window)
+            while (executionTimestamps.length > 0 && executionTimestamps[0] <= now - RATE_LIMIT_WINDOW_MS) {
+                executionTimestamps.shift();
+            }
+
+            // 2. Check if we have slots available
+            if (executionTimestamps.length < RATE_LIMIT_COUNT) {
+                const jobId = queue.shift();
+                if (jobId) {
+                    // Record execution time
+                    executionTimestamps.push(Date.now());
+
+                    // Run job (don't await completion here to allow parallelism if limit > 1)
+                    processJob(jobId).catch(err => console.error(`[Queue] Job ${jobId} failed:`, err));
+                }
+            } else {
+                // 3. Wait for the next slot to open
+                const oldestTimestamp = executionTimestamps[0];
+                const waitTime = (oldestTimestamp + RATE_LIMIT_WINDOW_MS) - now + 100; // +100ms buffer
+
+                if (waitTime > 0) {
+                    console.log(`[Queue] Rate limit reached. Waiting ${Math.ceil(waitTime / 1000)}s...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
+            }
+        }
+    } catch (e) {
+        console.error("[Queue] Error processing queue:", e);
+    } finally {
+        processingQueue = false;
+    }
+}
+// -----------------------------------------
+
 export async function createVideoJob(sceneId: string, projectId: string, payload: any) {
     // 1. Cria o registro da intenção
     const job = await prisma.job.create({
@@ -14,8 +63,10 @@ export async function createVideoJob(sceneId: string, projectId: string, payload
         }
     });
 
-    // 2. Dispara o processamento em background (FIRE AND FORGET)
-    processJob(job.id).catch(err => console.error("Job failed silently:", err));
+    // 2. Enfileira o job em vez de processar imediatamente
+    console.log(`[Queue] Enqueueing job ${job.id} for rate-limited processing`);
+    queue.push(job.id);
+    processQueue();
 
     return job;
 }
@@ -55,7 +106,7 @@ async function processJob(jobId: string) {
             modelId,
             withAudio
         );
-        
+
         // Upload to R2 to avoid saving Base64 in DB
         try {
             const { uploadBase64ToR2 } = await import("@/lib/storage");
