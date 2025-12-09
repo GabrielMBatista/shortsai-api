@@ -19,6 +19,12 @@ export const generateVideoScriptPrompt = (
         - If the user's input/prompt is short, you MUST EXPAND the narrative.
         - If the user's input/prompt is too long, you MUST SUMMARIZE.
         - Keep the narration natural and engaging.
+        
+        SAFETY & VISUAL GUIDELINES (CRITICAL):
+        - Visual descriptions must be SAFE FOR WORK (PG-13).
+        - AVOID: Violence, gore, blood, weapons, explicit content, real politicians/celebrities, or overly realistic depictions of suffering.
+        - Use stylistic keywords like "Cinematic lighting", "3D render", "Abstract", "Digital Art" to avoid triggering realism filters if the topic is sensitive.
+        - Focus on atmosphere, lighting, and composition rather than specific restricted actions.
 
         VIRAL METADATA STRATEGY (Language: ${language}):
         
