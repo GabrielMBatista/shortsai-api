@@ -6,7 +6,7 @@ export class KeyManager {
         if (!userId) {
             throw new Error("userId is required but was undefined. This likely means the payload was not constructed correctly.");
         }
-        
+
         if (providedKey) return { key: providedKey, isSystem: false };
 
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
@@ -25,14 +25,15 @@ export class KeyManager {
 
     static async getGeminiClient(userId: string, providedKey?: string): Promise<{ client: GoogleGenAI, isSystem: boolean }> {
         const { key, isSystem } = await this.getGeminiKey(userId, providedKey);
-        return { client: new GoogleGenAI({ apiKey: key }), isSystem };
+        // Explicitly use v1beta to ensure access to the latest models (Imagen 4, Gemini 2.5)
+        return { client: new GoogleGenAI({ apiKey: key, apiVersion: 'v1beta' }), isSystem };
     }
 
     static async getElevenLabsKey(userId: string, providedKey?: string): Promise<{ key: string, isSystem: boolean }> {
         if (!userId) {
             throw new Error("userId is required but was undefined. This likely means the payload was not constructed correctly.");
         }
-        
+
         if (providedKey) return { key: providedKey, isSystem: false };
 
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
@@ -50,7 +51,7 @@ export class KeyManager {
         if (!userId) {
             throw new Error("userId is required but was undefined. This likely means the payload was not constructed correctly.");
         }
-        
+
         if (providedKey) return { key: providedKey, isSystem: false };
 
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
@@ -68,7 +69,7 @@ export class KeyManager {
         if (!userId) {
             throw new Error("userId is required but was undefined. This likely means the payload was not constructed correctly.");
         }
-        
+
         if (providedKey) return { key: providedKey, isSystem: false };
 
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });

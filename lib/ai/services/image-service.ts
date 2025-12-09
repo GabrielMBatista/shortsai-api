@@ -14,7 +14,7 @@ export class ImageService {
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
-                model: 'imagen-3.0-fast-generate-001', // Using Imagen 3 Fast (Stable) as requested 'imagen-4' alias might be preview
+                model: 'imagen-4.0-fast-generate', // Using exact ID from user's AI Studio
                 contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
                 config: {
                     imageConfig: { aspectRatio: "9:16" },
@@ -27,7 +27,7 @@ export class ImageService {
                 }
             });
 
-            await trackUsage(userId, 'gemini', 'imagen-3.0-fast-generate-001', 'image');
+            await trackUsage(userId, 'gemini', 'imagen-4.0-fast-generate', 'image');
 
             const candidate = response.candidates?.[0];
             if (candidate?.content?.parts) {
@@ -53,7 +53,7 @@ export class ImageService {
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
-                model: "gemini-2.0-pro-exp-02-05", // Updating to Pro model for better analysis
+                model: "gemini-2.5-pro", // Exact ID from user's AI Studio
                 contents: [
                     {
                         role: 'user',
@@ -65,7 +65,7 @@ export class ImageService {
                 ]
             });
 
-            await trackUsage(userId, 'gemini', 'gemini-2.0-pro-exp-02-05', 'text');
+            await trackUsage(userId, 'gemini', 'gemini-2.5-pro', 'text');
             return response.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "Detailed character face description";
         }, userId);
     }
@@ -77,7 +77,7 @@ export class ImageService {
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
-                model: 'imagen-3.0-generate-001', // Use High Quality for reference improvements
+                model: 'imagen-4.0-generate', // Exact ID for high quality
                 contents: [
                     {
                         role: 'user',
@@ -98,7 +98,7 @@ export class ImageService {
                 }
             });
 
-            await trackUsage(userId, 'gemini', 'imagen-3.0-generate-001', 'image');
+            await trackUsage(userId, 'gemini', 'imagen-4.0-generate', 'image');
 
             const candidate = response.candidates?.[0];
             if (candidate?.content?.parts) {
