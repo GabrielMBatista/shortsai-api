@@ -90,3 +90,65 @@ export const listDriveChanges = async (auth: any, startPageToken: string | null)
         newStartPageToken: res.data.newStartPageToken
     };
 };
+
+export const ensureAppFolder = async (auth: any, folderName: string = 'ShortsAI Uploads') => {
+    const drive = google.drive({ version: 'v3', auth });
+
+    // Check if folder exists
+    const res = await drive.files.list({
+        q: `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and trashed=false`,
+        spaces: 'drive',
+        fields: 'files(id, name)'
+    });
+
+    if (res.data.files && res.data.files.length > 0) {
+        return res.data.files[0].id!;
+    }
+
+    // Create folder
+    const folderMetadata = {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+    };
+
+    const folder = await drive.files.create({
+        requestBody: folderMetadata,
+        fields: 'id'
+    });
+
+    return folder.data.id!;
+};
+
+export const initiateResumableUpload = async (auth: any, fileName: string, mimeType: string, folderId?: string) => {
+    // Manually initiate upload to get the session URI for the frontend
+    // Using axios or fetch to call Google API directly might be needed if googleapis lib is strict,
+    // but we can try getting the request object.
+    // Actually, simpler to just use Authenticated Gaxios
+
+    // If folderId is not provided, find/create the default app folder
+    const targetFolderId = folderId || await ensureAppFolder(auth);
+
+    const token = (await auth.getAccessToken()).token;
+
+    const metadata = {
+        name: fileName,
+        parents: [targetFolderId],
+        mimeType: mimeType
+    };
+
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(metadata)
+    });
+
+    if (!res.ok) {
+        throw new Error(`Failed to initiate upload: ${res.statusText}`);
+    }
+
+    // The session URI is in the Location header
+    return res.headers.get('Location');
+};
