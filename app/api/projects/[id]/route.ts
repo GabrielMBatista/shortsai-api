@@ -73,7 +73,10 @@ export async function GET(
                             select: {
                                 id: true,
                                 name: true,
-                                images: true
+                                description: true,
+                                images: true,
+                                user_id: true,
+                                created_at: true
                             }
                         }
                     }
