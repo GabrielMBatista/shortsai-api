@@ -24,7 +24,8 @@ export async function PATCH(
             video_url,
             video_status,
             media_type,
-            scene_number
+            scene_number,
+            characterIds // Array of character IDs
         } = body;
 
         // Verify ownership
@@ -41,17 +42,26 @@ export async function PATCH(
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
+        const updateData: Prisma.SceneUpdateInput = {
+            visual_description,
+            narration,
+            duration_seconds,
+            video_url,
+            video_status,
+            media_type,
+            scene_number
+        };
+
+        if (Array.isArray(characterIds)) {
+            updateData.characters = {
+                set: characterIds.map((cid: string) => ({ id: cid }))
+            };
+        }
+
         const scene = await prisma.scene.update({
             where: { id },
-            data: {
-                visual_description,
-                narration,
-                duration_seconds,
-                video_url,
-                video_status,
-                media_type,
-                scene_number
-            },
+            data: updateData,
+            include: { characters: true } // Return updated characters
         });
 
         return NextResponse.json(scene);
