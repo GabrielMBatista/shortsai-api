@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { google } from 'googleapis';
+import { getGoogleAuth } from '@/lib/services/google-drive';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,33 +17,56 @@ export async function GET(request: Request) {
 
         const accounts = await prisma.account.findMany({
             where: {
-                userId: user_id, // Note: In schema it is userId, mapped to user_id? Let's check prisma schema again.
+                userId: user_id,
                 provider: 'google'
-            },
-            select: {
-                id: true,
-                provider: true,
-                providerAccountId: true, // Google Channel ID usually comes from here or extra metadata
-                drivePageToken: true,
-                driveChannelId: true,
-                driveChannelExpiration: true,
-                updatedAt: true
             }
         });
 
-        // Map to a friendlier format if needed
-        const mappedAccounts = accounts.map(acc => ({
-            id: acc.id,
-            name: acc.providerAccountId, // For now, we don't store email separately in Account unless we fetch via API. 
-            // In NextAuth account, providerAccountId is usually the Google Sub/ID.
-            // Ideally we should have a way to get the email (maybe store it in User if linked?).
-            // For now let's just return what we have.
-            provider: acc.provider,
-            lastSync: acc.updatedAt,
-            status: acc.driveChannelExpiration && new Date(acc.driveChannelExpiration) > new Date() ? 'active' : 'inactive'
-        }));
+        const channelsPromises = accounts.map(async (acc) => {
+            try {
+                // Initialize Auth
+                const authClient = await getGoogleAuth(user_id); // This retrieves creds from DB again, optimized if cached but fine for now.
 
-        return NextResponse.json(mappedAccounts);
+                const youtube = google.youtube({ version: 'v3', auth: authClient });
+
+                // Fetch User's Channels
+                const response = await youtube.channels.list({
+                    part: ['snippet', 'contentDetails', 'statistics'],
+                    mine: true
+                });
+
+                const items = response.data.items || [];
+
+                // Return all channels found for this account
+                return items.map(item => ({
+                    id: item.id, // YouTube Channel ID
+                    accountId: acc.id, // Internal Account ID
+                    name: item.snippet?.title || 'Unknown Channel',
+                    thumbnail: item.snippet?.thumbnails?.default?.url,
+                    statistics: item.statistics,
+                    provider: 'youtube', // explicit for UI
+                    lastSync: acc.updatedAt,
+                    status: 'active' // If API call worked, it's active
+                }));
+
+            } catch (err) {
+                console.error(`Failed to fetch channels for account ${acc.id}:`, err);
+                // Return a fallback if API fails but account exists
+                return [{
+                    id: acc.providerAccountId,
+                    accountId: acc.id,
+                    name: 'Google Account (Sync Error)',
+                    provider: 'google',
+                    lastSync: acc.updatedAt,
+                    status: 'error'
+                }];
+            }
+        });
+
+        const channelsNested = await Promise.all(channelsPromises);
+        const channels = channelsNested.flat();
+
+        return NextResponse.json(channels);
     } catch (error: any) {
         console.error('Error fetching channels:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
