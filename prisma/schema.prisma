@@ -32,9 +32,10 @@ model User {
   projects                Project[]
   sessions                Session[]
   shows                   Show[]
-  usage_logs              UsageLog[]
   social_posts            SocialPost[]
+  usage_logs              UsageLog[]
   user_limits             UserLimits?
+  videoTransferJobs       VideoTransferJob[]
   plan                    Plan?            @relation(fields: [plan_id], references: [id])
 
   @@map("users")
@@ -72,6 +73,13 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
+  
+  // Google Drive Sync State
+  drivePageToken         String?
+  driveChannelId         String?
+  driveChannelResourceId String?
+  driveChannelExpiration DateTime?
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -162,12 +170,12 @@ model Project {
   show_id                       String?
   final_video_url               String?
   ProjectCharacters             ProjectCharacters[]
-  folder        Folder?             @relation(fields: [folder_id], references: [id], onDelete: Cascade)
+  folder                        Folder?             @relation(fields: [folder_id], references: [id], onDelete: Cascade)
   show                          Show?               @relation(fields: [show_id], references: [id])
   user                          User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
   scenes                        Scene[]
-  usage_logs                    UsageLog[]
   social_posts                  SocialPost[]
+  usage_logs                    UsageLog[]
 
   @@index([user_id])
   @@index([show_id])
@@ -178,14 +186,13 @@ model Folder {
   id         String    @id @default(uuid())
   name       String
   user_id    String
-  parent_id  String?
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
-  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  projects   Project[]
-  
+  parent_id  String?
   parent     Folder?   @relation("SubFolders", fields: [parent_id], references: [id], onDelete: Cascade)
   children   Folder[]  @relation("SubFolders")
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  projects   Project[]
 
   @@unique([user_id, name])
   @@index([user_id])
@@ -214,15 +221,14 @@ model Scene {
   word_timings       Json?
   video_status       SceneStatus @default(draft)
   video_url          String?
-  visual_effect      String      @default("zoom_in")
   video_attempts     Int         @default(0)
   media_type         String      @default("image")
   status             String      @default("DRAFT")
   version            Int         @default(0)
-  characters         Character[] @relation("SceneToCharacter")
-  
+  visual_effect      String      @default("zoom_in")
   jobs               Job[]
   project            Project     @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  characters         Character[] @relation("SceneToCharacter")
 
   @@index([project_id])
   @@index([project_id, scene_number])
@@ -308,37 +314,24 @@ model UsageLog {
 }
 
 model SocialPost {
-  id              String    @id @default(uuid())
-  userId          String    @map("user_id")
-  projectId       String    @map("project_id")
-
-  // Platform Info
-  platform        SocialPlatform 
-  accountId       String?   @map("account_id") // ID da conta conectada (tabela Account)
-
-  // Metadata
-  title           String?
-  description     String?   @db.Text
-  tags            String[]
-  privacyStatus   PrivacyStatus @default(PRIVATE)
-
-  // Scheduling
-  scheduledAt     DateTime? @map("scheduled_at")
-  publishedAt     DateTime? @map("published_at")
-
-  // Status
-  status          PostStatus @default(DRAFT)
-  error           String?
-
-  // External IDs
-  externalId      String?   // YouTube Video ID
-
-  // Relations
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id            String         @id @default(uuid())
+  userId        String         @map("user_id")
+  projectId     String         @map("project_id")
+  platform      SocialPlatform
+  accountId     String?        @map("account_id")
+  title         String?
+  description   String?
+  tags          String[]
+  privacyStatus PrivacyStatus  @default(PRIVATE)
+  scheduledAt   DateTime?      @map("scheduled_at")
+  publishedAt   DateTime?      @map("published_at")
+  status        PostStatus     @default(DRAFT)
+  error         String?
+  externalId    String?
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("social_posts")
 }
@@ -435,5 +428,46 @@ enum PostStatus {
   SCHEDULED
   PUBLISHING
   PUBLISHED
+  FAILED
+}
+
+model VideoTransferJob {
+  id              String    @id @default(uuid())
+  userId          String
+  
+  // Metadados do Drive (Origem)
+  driveFileId     String
+  driveFileName   String
+  driveMimeType   String
+  driveFileSize   BigInt
+  driveChecksum   String?
+
+  // Metadados do YouTube (Destino)
+  youtubeVideoId  String?
+  youtubeStatus   String?
+  publishAt       DateTime?
+
+  // Controle de Execução
+  status          VideoTransferStatus @default(QUEUED)
+  progress        Int       @default(0)
+  attempts        Int       @default(0)
+  lastError       String?   @db.Text
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+
+  user            User      @relation(fields: [userId], references: [id])
+  
+  @@index([userId, status])
+  @@index([driveFileId])
+}
+
+enum VideoTransferStatus {
+  QUEUED
+  PROCESSING
+  WAITING_QUOTA
+  COMPLETED
   FAILED
 }

@@ -28,7 +28,24 @@ export const videoRenderingQueue = new Queue(VIDEO_RENDERING_QUEUE_NAME, {
     },
 });
 
+// Queue for Google Drive -> YouTube Transfer
+export const VIDEO_TRANSFER_QUEUE_NAME = 'video-transfer';
+
+export const videoTransferQueue = new Queue(VIDEO_TRANSFER_QUEUE_NAME, {
+    connection: connectionOptions,
+    defaultJobOptions: {
+        attempts: 5,
+        backoff: {
+            type: 'exponential',
+            delay: 5000,
+        },
+        removeOnComplete: true,
+        removeOnFail: false,
+    },
+});
+
 export const queues = {
     socialPosting: socialPostingQueue,
     videoRendering: videoRenderingQueue,
+    videoTransfer: videoTransferQueue,
 };
