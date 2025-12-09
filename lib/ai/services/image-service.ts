@@ -13,41 +13,7 @@ export class ImageService {
         const fullPrompt = generateImagePrompt(style, prompt);
 
         return executeRequest(isSystem, async () => {
-            // Check if using new Imagen 4 model which requires REST :predict endpoint
-            const isV4 = true; // Force try V4 logic for now as requested
-            const modelName = 'imagen-4.0-fast-generate';
-
-            if (isV4) {
-                const { key } = await KeyManager.getGeminiKey(userId, keys?.gemini);
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:predict?key=${key}`;
-
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        instances: [{ prompt: fullPrompt }],
-                        parameters: { aspectRatio: "9:16", sampleCount: 1 }
-                    })
-                });
-
-                if (!response.ok) {
-                    const err = await response.json().catch(() => ({ error: { message: response.statusText } }));
-                    // If 404 on V4, throw to fallback? Or just fail. Let's fail with clear message.
-                    throw new Error(`Imagen 4 Error (${response.status}): ${JSON.stringify(err)}`);
-                }
-
-                const data = await response.json();
-                const base64 = data.predictions?.[0]?.bytesBase64Encoded;
-
-                if (base64) {
-                    await trackUsage(userId, 'gemini', modelName, 'image');
-                    const base64Image = `data:image/png;base64,${base64}`;
-                    return await ImageService.uploadToR2(base64Image, 'scenes/images');
-                }
-                throw new Error("No image returned from Imagen 4");
-            }
-
-            // Fallback to SDK for other models
+            // Reverting to stable Imagen 3.0 as Imagen 4.0 (v1beta) is returning 404 errors on public endpoints
             const response = await ai.models.generateContent({
                 model: 'imagen-3.0-generate-001',
                 contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
@@ -88,7 +54,7 @@ export class ImageService {
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-pro",
+                model: "gemini-2.0-pro-exp-02-05", // Reverting to known working Pro Experimental model if 2.5 fails, or keeping 2.5 if user insists. Let's start with safe 2.0 Pro Exp.
                 contents: [
                     {
                         role: 'user',
@@ -100,50 +66,13 @@ export class ImageService {
                 ]
             });
 
-            await trackUsage(userId, 'gemini', 'gemini-2.5-pro', 'text');
+            await trackUsage(userId, 'gemini', 'gemini-2.0-pro-exp-02-05', 'text');
             return response.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "Detailed character face description";
         }, userId);
     }
 
     static async optimizeReferenceImage(userId: string, base64ImageUrl: string, keys?: { gemini?: string }): Promise<string> {
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId, keys?.gemini);
-        // Check if using new Imagen 4 model which requires REST :predict endpoint
-        const isV4 = true;
-        const modelName = 'imagen-4.0-generate';
-
-        if (isV4) {
-            const { key } = await KeyManager.getGeminiKey(userId, keys?.gemini);
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:predict?key=${key}`;
-            const base64Data = base64ImageUrl.split(',')[1];
-
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    instances: [{
-                        prompt: optimizeCharacterPrompt,
-                        image: { bytesBase64Encoded: base64Data } // Vertex AI format often uses struct
-                    }],
-                    parameters: { aspectRatio: "1:1", sampleCount: 1 }
-                })
-            });
-
-            if (!response.ok) {
-                // Only fail silently or log? Let's throw to see errors
-                const err = await response.json().catch(() => ({ error: { message: response.statusText } }));
-                throw new Error(`Imagen 4 Opt Error (${response.status}): ${JSON.stringify(err)}`);
-            }
-
-            const data = await response.json();
-            const base64 = data.predictions?.[0]?.bytesBase64Encoded;
-
-            if (base64) {
-                await trackUsage(userId, 'gemini', modelName, 'image');
-                const base64Image = `data:image/png;base64,${base64}`;
-                return await ImageService.uploadToR2(base64Image, 'characters');
-            }
-        }
-
         const base64Data = base64ImageUrl.split(',')[1];
         const prompt = optimizeCharacterPrompt;
 

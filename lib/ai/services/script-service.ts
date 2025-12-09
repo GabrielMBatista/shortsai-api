@@ -25,14 +25,14 @@ export class ScriptService {
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
+                model: "gemini-2.0-flash-exp", // Updated to 2.0 Flash Exp (as 2.5 Flash is not available/404)
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
                 config: {
                     responseMimeType: "application/json",
                 }
             });
 
-            await trackUsage(userId, 'gemini', 'gemini-2.5-flash', 'text');
+            await trackUsage(userId, 'gemini', 'gemini-2.0-flash-exp', 'text');
 
             const text = response.candidates?.[0]?.content?.parts?.[0]?.text;
             if (!text) throw new Error("No script generated");
