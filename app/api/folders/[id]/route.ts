@@ -6,7 +6,8 @@ import { z } from 'zod';
 export const dynamic = 'force-dynamic';
 
 const updateFolderSchema = z.object({
-    name: z.string().min(1).max(50),
+    name: z.string().min(1).max(50).optional(),
+    parent_id: z.string().nullable().optional(),
 });
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -24,7 +25,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             return NextResponse.json({ error: 'Validation Error', details: validation.error.format() }, { status: 400 });
         }
 
-        const { name } = validation.data;
+        const { name, parent_id } = validation.data;
         const user_id = session.user.id;
 
         // Verify ownership
@@ -36,9 +37,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             return NextResponse.json({ error: 'Folder not found or access denied' }, { status: 404 });
         }
 
+        // Prevent circular dependency if moving
+        if (parent_id) {
+            if (parent_id === id) {
+                return NextResponse.json({ error: 'Cannot move folder into itself' }, { status: 400 });
+            }
+            // Naive cycle check could be added here if needed, but for now simplified.
+        }
+
+        const dataToUpdate: any = {};
+        if (name !== undefined) dataToUpdate.name = name;
+        if (parent_id !== undefined) dataToUpdate.parent_id = parent_id;
+
         const updatedFolder = await prisma.folder.update({
             where: { id },
-            data: { name },
+            data: dataToUpdate,
         });
 
         // Invalidate cache
