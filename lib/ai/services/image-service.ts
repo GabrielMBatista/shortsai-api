@@ -14,7 +14,7 @@ export class ImageService {
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
-                model: 'imagen-3.0-generate-001',
+                model: 'gemini-2.5-flash-image',
                 contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
                 config: {
                     imageConfig: { aspectRatio: "9:16" },
@@ -27,7 +27,7 @@ export class ImageService {
                 }
             });
 
-            await trackUsage(userId, 'gemini', 'imagen-3.0-generate-001', 'image');
+            await trackUsage(userId, 'gemini', 'gemini-2.5-flash-image', 'image');
 
             const candidate = response.candidates?.[0];
             if (candidate?.content?.parts) {
@@ -53,7 +53,7 @@ export class ImageService {
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
-                model: "gemini-2.0-pro-exp-02-05", // Reverting to known working Pro Experimental model if 2.5 fails, or keeping 2.5 if user insists. Let's start with safe 2.0 Pro Exp.
+                model: "gemini-2.5-flash",
                 contents: [
                     {
                         role: 'user',
@@ -65,7 +65,7 @@ export class ImageService {
                 ]
             });
 
-            await trackUsage(userId, 'gemini', 'gemini-2.0-pro-exp-02-05', 'text');
+            await trackUsage(userId, 'gemini', 'gemini-2.5-flash-vision', 'text');
             return response.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "Detailed character face description";
         }, userId);
     }
@@ -77,7 +77,7 @@ export class ImageService {
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
-                model: 'imagen-3.0-generate-001', // Reverting to stable Imagen 3
+                model: 'gemini-2.5-flash-image',
                 contents: [
                     {
                         role: 'user',
@@ -98,7 +98,7 @@ export class ImageService {
                 }
             });
 
-            await trackUsage(userId, 'gemini', 'imagen-3.0-generate-001', 'image');
+            await trackUsage(userId, 'gemini', 'gemini-2.5-flash-image', 'image');
 
             const candidate = response.candidates?.[0];
             if (candidate?.content?.parts) {
