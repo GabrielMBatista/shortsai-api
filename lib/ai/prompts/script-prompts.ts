@@ -1,10 +1,10 @@
 export const generateVideoScriptPrompt = (
-    topic: string,
-    style: string,
-    language: string,
-    minSeconds: number,
-    maxSeconds: number,
-    sceneInstruction: string
+   topic: string,
+   style: string,
+   language: string,
+   minSeconds: number,
+   maxSeconds: number,
+   sceneInstruction: string
 ) => `
         You are an expert viral video director for Shorts/Reels.
         Create a script for a vertical short video (9:16) about: "${topic}".
@@ -26,45 +26,58 @@ export const generateVideoScriptPrompt = (
         - Use stylistic keywords like "Cinematic lighting", "3D render", "Abstract", "Digital Art" to avoid triggering realism filters if the topic is sensitive.
         - Focus on atmosphere, lighting, and composition rather than specific restricted actions.
 
-        VIRAL METADATA STRATEGY (Language: ${language}):
-        
-        1. **videoTitle** (Shorts/Reels/TikTok):
-           - Structure: [Trigger] + [Strong Statement] + [Topic Anchor]
-           - Characteristics: Short, direct, emotional. Contains a strong question or statement. Includes a central keyword.
+        ========================================
+        🔥 CRITICAL METADATA REQUIREMENTS (MANDATORY - DO NOT SKIP):
+        ========================================
+        YOU MUST GENERATE ALL OF THE FOLLOWING FIELDS. MISSING ANY FIELD WILL CAUSE SYSTEM FAILURE.
+        Language for metadata: ${language}
 
-        2. **videoDescription** (YouTube Shorts):
-           - Length: 1-4 lines.
-           - Structure: Emotional phrase linked to content -> Explain essence -> CTA (e.g., "Comment 'X'").
-        
-        3. **shortsHashtags** (YouTube Shorts):
-           - Quantity: 8 to 12 hashtags.
-           - Format: All lowercase. Mix generic and specific.
-           - Priority: Content keywords.
+        1. **videoTitle** (MANDATORY):
+           - Structure: [Gatilho/Trigger] + [Afirmação Forte/Strong Statement] + [Âncora do Tema/Topic Anchor]
+           - Max 60 characters
+           - Must include main keyword
+           - Emotional and direct
+           - Example: "🚀 Isso Mudou Tudo! | ${topic.split(' ').slice(0, 3).join(' ')}"
 
-        4. **tiktokText** (TikTok Post Text):
-           - Length: 1 sentence.
-           - Focus: Emotion/identification. Retention over search. No links.
+        2. **videoDescription** (MANDATORY):
+           - 1-4 lines ONLY
+           - Structure: Emotional hook → Essence → Single CTA
+           - Must end with CTA (e.g., "Comente 'SIM'", "Comment 'YES'")
+           - Example: "Descobri isso e minha vida nunca mais foi a mesma. Veja até o final. 👉 Comente 'INCRÍVEL'"
 
-        5. **tiktokHashtags** (TikTok):
-           - Quantity: Max 5 hashtags.
-           - Structure: 1 broad + 3 specific + 1 community.
-           - Goal: ForYou delivery.
+        3. **shortsHashtags** (MANDATORY ARRAY - MINIMUM 8, MAXIMUM 12):
+           - Format: ALL LOWERCASE, include # symbol
+           - Mix: 3 generic + 6 specific + 3 niche
+           - Priority: Content keywords
+           - Example: ["#shorts", "#${topic.split(' ')[0].toLowerCase()}", "#viral", "#fyp", "#explorepage", "#trending", "#${language.toLowerCase()}", "#reels"]
 
-        6. **Consistency**:
-           - Maintain consistent title/hashtag structure.
+        4. **tiktokText** (MANDATORY):
+           - EXACTLY 1 sentence
+           - Focus: Emotion or immediate identification
+           - NO external links, NO requests to leave platform
+           - Example: "Isso mudou minha perspectiva para sempre 🤯"
 
+        5. **tiktokHashtags** (MANDATORY ARRAY - EXACTLY 5):
+           - Structure: 1 broad + 3 specific + 1 community
+           - Goal: ForYou page delivery
+           - Example: ["#fyp", "#${topic.split(' ')[0].toLowerCase()}", "#viral", "#foryou", "#trending"]
 
-        Output ONLY valid JSON. No markdown.
+        ========================================
+
+        Output ONLY valid JSON. No markdown blocks. No explanations.
         USE CAMELCASE FOR ALL KEYS.
-        Structure:
+        
+        REQUIRED JSON STRUCTURE (ALL FIELDS MANDATORY):
         {
-            "videoTitle": "State of the art Title 🤯",
-            "videoDescription": "Emotional hook... Essence... CTA: Comment 'YES'",
-            "shortsHashtags": ["#shorts", "#topic", ...],
-            "tiktokText": "This changed my life forever.",
-            "tiktokHashtags": ["#fyp", "#specific", ...],
+            "videoTitle": "🚀 [Emotional Trigger] | [Core Message]",
+            "videoDescription": "Hook emocional... Essência do conteúdo... CTA: Comente 'X' 👇",
+            "shortsHashtags": ["#shorts", "#viral", "#fyp", "#topic1", "#topic2", "#topic3", "#niche1", "#niche2"],
+            "tiktokText": "Frase curta e impactante que gera emoção.",
+            "tiktokHashtags": ["#fyp", "#viral", "#trending", "#specific", "#community"],
             "scenes": [
                 { "sceneNumber": 1, "visualDescription": "Detailed visual prompt for AI image generator", "narration": "Voiceover text", "durationSeconds": 5 }
             ]
         }
+        
+        REMINDER: IF YOU OMIT shortsHashtags OR tiktokHashtags, THE SYSTEM WILL FAIL. ALWAYS INCLUDE BOTH ARRAYS WITH AT LEAST THE MINIMUM REQUIRED ITEMS.
         `;
