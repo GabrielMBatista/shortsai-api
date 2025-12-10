@@ -22,7 +22,7 @@ export class ImageService {
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
+                model: 'gemini-2.0-flash-exp', // Using experimental model which usually has image gen capabilities
                 contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
                 config: {
                     imageConfig: { aspectRatio: "9:16" },
@@ -91,7 +91,7 @@ export class ImageService {
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
+                model: 'gemini-2.0-flash-exp', // Using experimental model
                 contents: [
                     {
                         role: 'user',
