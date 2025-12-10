@@ -15,6 +15,10 @@ export const createProjectSchema = z.object({
     folder_id: z.string().optional().nullable(),
     generated_title: z.string().optional(),
     generated_description: z.string().optional(),
+    generated_shorts_hashtags: z.array(z.string()).optional(),
+    generated_tiktok_text: z.string().optional(),
+    generated_tiktok_hashtags: z.array(z.string()).optional(),
+    script_metadata: z.any().optional(),
 });
 
 export const updateProjectSchema = z.object({

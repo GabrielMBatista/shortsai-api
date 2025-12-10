@@ -39,6 +39,10 @@ export async function POST(request: Request) {
             folder_id,
             generated_title,
             generated_description,
+            generated_shorts_hashtags,
+            generated_tiktok_text,
+            generated_tiktok_hashtags,
+            script_metadata,
         } = validation.data;
 
         const user_id = session.user.id;
@@ -132,6 +136,10 @@ export async function POST(request: Request) {
                 folder_id,
                 generated_title,
                 generated_description,
+                generated_shorts_hashtags: generated_shorts_hashtags || [],
+                generated_tiktok_text,
+                generated_tiktok_hashtags: generated_tiktok_hashtags || [],
+                script_metadata: script_metadata || Prisma.JsonNull,
                 // Explicitly create relation records
                 ProjectCharacters: {
                     create: characterIds?.map((id: string) => ({
@@ -210,6 +218,10 @@ export async function GET(request: Request) {
                     created_at: true,
                     generated_title: true,
                     generated_description: true,
+                    generated_shorts_hashtags: true,
+                    generated_tiktok_text: true,
+                    generated_tiktok_hashtags: true,
+                    script_metadata: true,
                     status: true,
                     is_archived: true,
                     tags: true,

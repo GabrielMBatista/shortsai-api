@@ -156,6 +156,10 @@ model Project {
   updated_at                    DateTime            @default(now()) @updatedAt
   generated_description         String?
   generated_title               String?
+  generated_shorts_hashtags     String[]            @default([])
+  generated_tiktok_text         String?
+  generated_tiktok_hashtags     String[]            @default([])
+  script_metadata               Json?
   reference_characters_snapshot Json?
   status                        ProjectStatus       @default(draft)
   duration_config               Json?
