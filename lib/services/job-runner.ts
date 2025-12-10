@@ -152,7 +152,8 @@ async function processJob(jobId: string, userId: string) {
                         video_status: SceneStatus.COMPLETED,
                         status: "READY",
                         version: { increment: 1 },
-                        media_type: "video"
+                        media_type: "video",
+                        video_model: modelId || "veo" // Save model used
                     }
                 });
             }

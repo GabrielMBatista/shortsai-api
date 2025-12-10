@@ -235,7 +235,8 @@ export async function GET(request: Request) {
                             image_status: true,
                             audio_status: true,
                             video_status: true,
-                            media_type: true
+                            media_type: true,
+                            video_model: true
                         },
                         orderBy: { scene_number: 'asc' }
                     },

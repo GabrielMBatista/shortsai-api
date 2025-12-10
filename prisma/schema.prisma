@@ -230,6 +230,7 @@ model Scene {
   status             String      @default("DRAFT")
   version            Int         @default(0)
   visual_effect      String      @default("zoom_in")
+  video_model        String?
   jobs               Job[]
   project            Project     @relation(fields: [project_id], references: [id], onDelete: Cascade)
   characters         Character[] @relation("SceneToCharacter")
