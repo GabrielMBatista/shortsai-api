@@ -2,7 +2,7 @@ import { KeyManager } from '../core/key-manager';
 import { executeRequest } from '../core/executor';
 import { trackUsage } from '../core/usage-tracker';
 import { HarmCategory, HarmBlockThreshold } from "@google/genai";
-
+import { sanitizePrompt, validatePrompt } from '../utils/prompt-sanitizer';
 
 import { generateImagePrompt, analyzeCharacterPrompt, optimizeCharacterPrompt } from '../prompts/image-prompts';
 
@@ -10,7 +10,15 @@ export class ImageService {
     static async generateImage(userId: string, prompt: string, style: string, keys?: { gemini?: string }): Promise<string> {
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId, keys?.gemini);
 
-        const fullPrompt = generateImagePrompt(style, prompt);
+        // Sanitizar prompt antes de usar
+        const sanitizedPrompt = sanitizePrompt(prompt, 'image');
+        const validation = validatePrompt(sanitizedPrompt);
+
+        if (!validation.valid) {
+            throw new Error(`Prompt inválido: ${validation.reason}`);
+        }
+
+        const fullPrompt = generateImagePrompt(style, sanitizedPrompt);
 
         return executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
@@ -39,10 +47,16 @@ export class ImageService {
                 }
                 const textPart = candidate.content.parts.find(p => p.text);
                 if (textPart?.text) {
-                    throw new Error(`Model Refusal: ${textPart.text}`);
+                    throw new Error(`Conteúdo recusado pela API: ${textPart.text}. Tente reformular a descrição da cena.`);
                 }
             }
-            throw new Error("Image generation failed - No image returned");
+
+            // Verificar se há bloqueio de segurança
+            if (candidate?.finishReason === 'SAFETY') {
+                throw new Error('Geração bloqueada por questões de segurança. A descrição pode conter conteúdo inadequado. Por favor, reformule.');
+            }
+
+            throw new Error("Falha na geração - API não retornou imagem. Tente novamente ou reformule a descrição.");
         }, userId);
     }
 

@@ -4,6 +4,7 @@ import { trackUsage } from '../core/usage-tracker';
 import { RateLimiter } from '../core/rate-limiter';
 import { wait } from '../core/queue';
 import { refineAnimationPrompt, generateVideoPrompt } from '../prompts/video-prompts';
+import { sanitizePrompt, validatePrompt } from '../utils/prompt-sanitizer';
 
 export const VEO_MODELS = {
     'veo-2': 'veo-2.0-generate-001',           // 50 RPD - Best for high volume
@@ -51,6 +52,14 @@ export class VideoService {
         let selectedModel = modelId;
         if (selectedModel === 'veo') selectedModel = 'veo-2.0-generate-001';
 
+        // Sanitizar prompt antes de processar
+        const sanitizedPrompt = sanitizePrompt(prompt, 'video');
+        const validation = validatePrompt(sanitizedPrompt);
+
+        if (!validation.valid) {
+            throw new Error(`Prompt inválido: ${validation.reason}`);
+        }
+
         // 1. Extract context using Gemini Flash for better animation prompts
         let animationPrompt = "";
         try {
@@ -63,7 +72,7 @@ export class VideoService {
                         role: "user",
                         parts: [
                             {
-                                text: refineAnimationPrompt(prompt)
+                                text: refineAnimationPrompt(sanitizedPrompt)
                             }
                         ]
                     }
@@ -78,7 +87,7 @@ export class VideoService {
         } catch (e) {
             console.warn("[VideoService] Failed to extract context, falling back to provided prompt", e);
             // Fallback to using the original prompt if extraction fails, but truncated
-            animationPrompt = prompt.substring(0, 100);
+            animationPrompt = sanitizedPrompt.substring(0, 100);
         }
 
         const generatedVideo = await executeRequest(isSystem, async () => {
@@ -114,6 +123,15 @@ export class VideoService {
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error(`[AIService] Veo API Error:`, errorText);
+
+                // Detectar violações de política
+                if (errorText.includes('usage guidelines') ||
+                    errorText.includes('violate') ||
+                    errorText.includes('policy') ||
+                    errorText.includes('prohibited')) {
+                    throw new Error('Prompt bloqueado: O conteúdo viola as diretrizes da API. Tente reformular a descrição da animação.');
+                }
+
                 throw new Error(`Veo API request failed: ${response.status} - ${errorText}`);
             }
 
@@ -178,7 +196,17 @@ export class VideoService {
             if (operation.done) {
                 // Check for error
                 if (operation.error) {
-                    throw new Error(`Video generation failed: ${operation.error.message}`);
+                    const errorMsg = operation.error.message || 'Unknown error';
+
+                    // Detectar violações de política
+                    if (errorMsg.includes('usage guidelines') ||
+                        errorMsg.includes('violate') ||
+                        errorMsg.includes('policy') ||
+                        errorMsg.includes('prohibited')) {
+                        throw new Error('Prompt bloqueado: O conteúdo viola as diretrizes da API. Tente reformular a descrição da animação.');
+                    }
+
+                    throw new Error(`Geração de vídeo falhou: ${errorMsg}`);
                 }
 
                 // Extract video URI from response
