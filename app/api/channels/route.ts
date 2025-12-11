@@ -41,20 +41,23 @@ export async function GET(request: Request) {
                 });
 
                 const youtube = google.youtube({ version: 'v3', auth: authClient });
+                const oauth2 = google.oauth2({ version: 'v2', auth: authClient });
 
-                // Fetch User's Channels
-                const response = await youtube.channels.list({
-                    part: ['snippet', 'contentDetails', 'statistics'],
-                    mine: true
-                });
+                // Run fetch operations in parallel for speed
+                const [channelsResponse, userResponse] = await Promise.all([
+                    youtube.channels.list({ part: ['snippet', 'contentDetails', 'statistics'], mine: true }),
+                    oauth2.userinfo.get().catch(() => ({ data: { email: undefined } })) // robust fallback
+                ]);
 
-                const items = response.data.items || [];
+                const items = channelsResponse.data.items || [];
+                const accountEmail = userResponse.data.email;
 
                 // Return all channels found for this account
                 return items.map(item => ({
                     id: item.id, // YouTube Channel ID
                     accountId: acc.id, // Internal Account ID
                     name: item.snippet?.title || 'Unknown Channel',
+                    email: accountEmail, // Added email identification
                     thumbnail: item.snippet?.thumbnails?.default?.url,
                     statistics: item.statistics,
                     provider: 'youtube', // explicit for UI
