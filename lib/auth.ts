@@ -28,6 +28,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     ],
     secret: process.env.AUTH_SECRET,
     debug: true, // Force debug
+
     events: {
         createUser: async ({ user }) => {
             const { broadcastAdminUpdate } = await import("@/lib/sse/sse-service");
@@ -35,6 +36,35 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
     },
     callbacks: {
+        async signIn({ user, account, profile }) {
+            // Explicitly update the account tokens in the database if they are provided.
+            // This fixes issues where re-connecting doesn't automatically update the refresh_token in some Prisma Adapter versions.
+            if (account?.provider === "google" && account.refresh_token) {
+                try {
+                    await prisma.account.update({
+                        where: {
+                            provider_providerAccountId: {
+                                provider: "google",
+                                providerAccountId: account.providerAccountId
+                            }
+                        },
+                        data: {
+                            refresh_token: account.refresh_token,
+                            access_token: account.access_token,
+                            expires_at: account.expires_at,
+                            id_token: account.id_token,
+                            scope: account.scope,
+                            updatedAt: new Date(),
+                        }
+                    });
+                    console.log("Auth: Manually updated Google account tokens for providerAccountId:", account.providerAccountId);
+                } catch (error) {
+                    // Account might not exist yet (first sign in), which is fine, the adapter will create it.
+                    console.log("Auth: Skipping manual update (account might be new or not found)", error);
+                }
+            }
+            return true;
+        },
         async session({ session, user }) {
             console.log("Auth Debug - Env Vars:", {
                 hasClientId: !!process.env.GOOGLE_CLIENT_ID,
@@ -58,6 +88,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             else if (url.startsWith("http://localhost:3000")) return url
             // Allows callback URLs to production domain (Dynamic)
             else if (process.env.NEXT_PUBLIC_APP_URL && url.startsWith(process.env.NEXT_PUBLIC_APP_URL)) return url
+            // Allow explicit frontend URL if hardcoded
+            else if (url.startsWith("https://shorts-ai-studio.vercel.app")) return url
             return baseUrl
         },
     },
