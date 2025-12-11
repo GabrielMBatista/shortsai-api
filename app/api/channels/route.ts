@@ -65,13 +65,25 @@ export async function GET(request: Request) {
             } catch (err: any) {
                 console.error(`Failed to fetch channels for account ${acc.id}:`, err);
                 const errorMessage = err?.message || 'Unknown Error';
-                const isScopeError = errorMessage.includes('insufficient authentication scopes') || errorMessage.includes('403');
+
+                let friendlyName = `Google Account (Error)`;
+
+                if (errorMessage.includes('insufficient authentication scopes') || errorMessage.includes('403')) {
+                    friendlyName = "Google Account (Needs Permissions)";
+                } else if (errorMessage.includes('YouTube Data API v3 has not been used') || errorMessage.includes('accessNotConfigured')) {
+                    friendlyName = "YouTube API Disabled";
+                } else if (errorMessage.includes('Missing refresh token')) {
+                    friendlyName = "Reconnect Required";
+                } else {
+                    // Truncate generic error if too long
+                    friendlyName = `Google Account (${errorMessage.substring(0, 30)}...)`;
+                }
 
                 // Return a fallback if API fails but account exists
                 return [{
                     id: acc.providerAccountId,
                     accountId: acc.id,
-                    name: `Google Account (${isScopeError ? 'Needs Re-Auth' : errorMessage})`,
+                    name: friendlyName,
                     provider: 'google',
                     lastSync: acc.updatedAt,
                     status: 'error'
