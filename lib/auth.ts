@@ -13,6 +13,12 @@ console.log("Auth Init - Env Vars Check:", {
 export const { handlers, signIn, signOut, auth } = NextAuth({
     adapter: PrismaAdapter(prisma),
     trustHost: true,
+    // Allow linking different accounts to the same user if needed (though we want multiple connected accounts, not just login methods)
+    // IMPORTANT: For linking multiple Google accounts to ONE user session, the adapter handles it if we are already logged in while connecting.
+    // However, if the issue is "reloading" without action, it might be the prompt param not taking effect or the session cookies.
+
+    // Enabling this to ensure we don't get 'OAuthAccountNotLinked' errors if emails match
+
     providers: [
         Google({
             clientId: process.env.GOOGLE_CLIENT_ID,
