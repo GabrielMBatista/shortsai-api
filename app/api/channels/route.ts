@@ -24,8 +24,21 @@ export async function GET(request: Request) {
 
         const channelsPromises = accounts.map(async (acc) => {
             try {
-                // Initialize Auth
-                const authClient = await getGoogleAuth(user_id); // This retrieves creds from DB again, optimized if cached but fine for now.
+                // Initialize Auth Manually for this specific account
+                if (!acc.refresh_token) {
+                    throw new Error('Missing refresh token');
+                }
+
+                const authClient = new google.auth.OAuth2(
+                    process.env.GOOGLE_CLIENT_ID,
+                    process.env.GOOGLE_CLIENT_SECRET,
+                    process.env.GOOGLE_REDIRECT_URI
+                );
+
+                authClient.setCredentials({
+                    refresh_token: acc.refresh_token,
+                    access_token: acc.access_token || undefined // optional
+                });
 
                 const youtube = google.youtube({ version: 'v3', auth: authClient });
 
@@ -49,13 +62,16 @@ export async function GET(request: Request) {
                     status: 'active' // If API call worked, it's active
                 }));
 
-            } catch (err) {
+            } catch (err: any) {
                 console.error(`Failed to fetch channels for account ${acc.id}:`, err);
+                const errorMessage = err?.message || 'Unknown Error';
+                const isScopeError = errorMessage.includes('insufficient authentication scopes') || errorMessage.includes('403');
+
                 // Return a fallback if API fails but account exists
                 return [{
                     id: acc.providerAccountId,
                     accountId: acc.id,
-                    name: 'Google Account (Sync Error)',
+                    name: `Google Account (${isScopeError ? 'Needs Re-Auth' : errorMessage})`,
                     provider: 'google',
                     lastSync: acc.updatedAt,
                     status: 'error'
