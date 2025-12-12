@@ -36,6 +36,11 @@ model User {
   usage_logs              UsageLog[]
   user_limits             UserLimits?
   videoTransferJobs       VideoTransferJob[]
+  channels                Channel[]
+  personasCreated         Persona[]        @relation("PersonaCreator")
+  personasOwned           Persona[]        @relation("PersonaOwner")
+  personaHistory          PersonaHistory[]
+  personaUsageLogs        PersonaUsageLog[]
   plan                    Plan?            @relation(fields: [plan_id], references: [id])
 
   @@map("users")
@@ -83,6 +88,7 @@ model Account {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channels          Channel[]
 
   @@unique([provider, providerAccountId])
   @@map("accounts")
@@ -173,16 +179,24 @@ model Project {
   episode_number                Int?
   show_id                       String?
   final_video_url               String?
+  channel_id                    String?
+  persona_id                    String?
+  persona_version               Int?
   ProjectCharacters             ProjectCharacters[]
   folder                        Folder?             @relation(fields: [folder_id], references: [id], onDelete: Cascade)
   show                          Show?               @relation(fields: [show_id], references: [id])
   user                          User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  channel                       Channel?            @relation(fields: [channel_id], references: [id], onDelete: SetNull)
+  persona                       Persona?            @relation(fields: [persona_id], references: [id], onDelete: SetNull)
   scenes                        Scene[]
   social_posts                  SocialPost[]
   usage_logs                    UsageLog[]
+  personaUsageLogs              PersonaUsageLog[]
 
   @@index([user_id])
   @@index([show_id])
+  @@index([channel_id])
+  @@index([persona_id])
   @@map("projects")
 }
 
@@ -476,4 +490,159 @@ enum VideoTransferStatus {
   COMPLETED
   FAILED
   SCHEDULED
+}
+
+// ═══════════════════════════════════════════════
+// PERSONAS & CHANNELS SYSTEM
+// ═══════════════════════════════════════════════
+
+enum PersonaType {
+  SYSTEM
+  CUSTOM
+}
+
+enum PersonaVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum AnalyticsPeriod {
+  DAY
+  WEEK
+  MONTH
+}
+
+model Persona {
+  id                 String             @id @default(uuid())
+  type               PersonaType
+  visibility         PersonaVisibility
+  requiredPlan       String             @default("free") @map("required_plan")
+  name               String
+  description        String?
+  category           String?
+  isOfficial         Boolean            @default(false) @map("is_official")
+  isFeatured         Boolean            @default(false) @map("is_featured")
+  isPremium          Boolean            @default(false) @map("is_premium")
+  systemInstruction  String             @map("system_instruction") @db.Text
+  temperature        Float              @default(0.7)
+  topP               Float              @default(0.9) @map("top_p")
+  topK               Int                @default(40) @map("top_k")
+  maxOutputTokens    Int                @default(8192) @map("max_output_tokens")
+  tags               String[]           @default([])
+  createdBy          String?            @map("created_by")
+  ownerId            String?            @map("owner_id")
+  isActive           Boolean            @default(true) @map("is_active")
+  version            Int                @default(1)
+  parentId           String?            @map("parent_id")
+  usageCount         Int                @default(0) @map("usage_count")
+  lastUsedAt         DateTime?          @map("last_used_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  
+  creator            User?              @relation("PersonaCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  owner              User?              @relation("PersonaOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  channels           Channel[]
+  projects           Project[]
+  versions           Persona[]          @relation("PersonaVersions")
+  parent             Persona?           @relation("PersonaVersions", fields: [parentId], references: [id], onDelete: SetNull)
+  history            PersonaHistory[]
+  usageLogs          PersonaUsageLog[]
+  
+  @@index([type, visibility, requiredPlan])
+  @@index([ownerId])
+  @@index([category])
+  @@index([parentId])
+  @@map("personas")
+}
+
+model Channel {
+  id                String             @id @default(uuid())
+  userId            String             @map("user_id")
+  googleAccountId   String             @map("google_account_id")
+  youtubeChannelId  String             @map("youtube_channel_id")
+  name              String
+  description       String?
+  thumbnail         String?
+  personaId         String?            @map("persona_id")
+  isActive          Boolean            @default(true) @map("is_active")
+  autoPublish       Boolean            @default(false) @map("auto_publish")
+  subscriberCount   Int?               @map("subscriber_count")
+  videoCount        Int?               @map("video_count")
+  viewCount         BigInt?            @map("view_count")
+  lastSyncedAt      DateTime?          @map("last_synced_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account           Account            @relation(fields: [googleAccountId], references: [id], onDelete: Cascade)
+  persona           Persona?           @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  projects          Project[]
+  analytics         ChannelAnalytics[]
+  
+  @@unique([userId, youtubeChannelId])
+  @@index([userId])
+  @@index([personaId])
+  @@index([googleAccountId])
+  @@map("channels")
+}
+
+model PersonaHistory {
+  id                String     @id @default(uuid())
+  personaId         String     @map("persona_id")
+  version           Int
+  snapshot          Json
+  changedBy         String?    @map("changed_by")
+  changeReason      String?    @map("change_reason")
+  performanceScore  Float?     @map("performance_score")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  
+  persona           Persona    @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  user              User?      @relation(fields: [changedBy], references: [id], onDelete: SetNull)
+  
+  @@unique([personaId, version])
+  @@index([personaId])
+  @@map("persona_history")
+}
+
+model ChannelAnalytics {
+  id            String           @id @default(uuid())
+  channelId     String           @map("channel_id")
+  date          DateTime
+  period        AnalyticsPeriod
+  views         Int              @default(0)
+  likes         Int              @default(0)
+  comments      Int              @default(0)
+  shares        Int              @default(0)
+  subscribers   Int              @default(0)
+  watchTime     Int              @default(0) @map("watch_time")
+  avgRetention  Float?          @map("avg_retention")
+  avgCtr        Float?           @map("avg_ctr")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  
+  channel       Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  
+  @@unique([channelId, date, period])
+  @@index([channelId, date])
+  @@map("channel_analytics")
+}
+
+model PersonaUsageLog {
+  id          String    @id @default(uuid())
+  personaId   String    @map("persona_id")
+  userId      String    @map("user_id")
+  projectId   String?   @map("project_id")
+  action      String
+  success     Boolean
+  duration    Int?
+  errorMsg    String?   @map("error_msg")
+  metadata    Json?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  
+  persona     Persona   @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@index([personaId, createdAt])
+  @@index([projectId])
+  @@map("persona_usage_logs")
 }

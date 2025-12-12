@@ -43,9 +43,32 @@ export async function POST(request: Request) {
             generated_tiktok_text,
             generated_tiktok_hashtags,
             script_metadata,
+            channel_id, // 🆕 Canal de destino
+            persona_id, // 🆕 Persona usada
         } = validation.data;
 
         const user_id = session.user.id;
+
+        // 🆕 Se channelId fornecido, buscar persona do canal
+        let effectivePersonaId = persona_id;
+        let personaVersion = null;
+
+        if (channel_id && !persona_id) {
+            const channel = await prisma.channel.findUnique({
+                where: { id: channel_id },
+                include: { persona: true }
+            });
+
+            if (channel?.personaId) {
+                effectivePersonaId = channel.personaId;
+                personaVersion = channel.persona?.version;
+            }
+        } else if (persona_id) {
+            const persona = await prisma.persona.findUnique({
+                where: { id: persona_id }
+            });
+            personaVersion = persona?.version;
+        }
 
         // --- LIMIT CHECK ---
         const user = await prisma.user.findUnique({
@@ -140,6 +163,10 @@ export async function POST(request: Request) {
                 generated_tiktok_text,
                 generated_tiktok_hashtags: generated_tiktok_hashtags || [],
                 script_metadata: script_metadata || Prisma.JsonNull,
+                // 🆕 Novos campos de Personas & Channels
+                channel_id: channel_id || null,
+                persona_id: effectivePersonaId || null,
+                persona_version: personaVersion,
                 // Explicitly create relation records
                 ProjectCharacters: {
                     create: characterIds?.map((id: string) => ({
@@ -150,6 +177,15 @@ export async function POST(request: Request) {
             include: {
                 ProjectCharacters: {
                     include: { characters: true }
+                },
+                channel: true,
+                persona: {
+                    select: {
+                        id: true,
+                        name: true,
+                        type: true,
+                        category: true
+                    }
                 }
             },
         });

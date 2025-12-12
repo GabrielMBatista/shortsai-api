@@ -10,7 +10,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:setup": "prisma migrate deploy && npm run db:seed",
     "postinstall": "prisma generate",
-    "worker:media": "tsx media-worker/index.ts"
+    "worker:media": "tsx media-worker/index.ts",
+    "seed:personas": "tsx prisma/seeds/personas.seed.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

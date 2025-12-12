@@ -1,0 +1,452 @@
+openapi: 3.0.3
+info:
+  title: ShortsAI API - Personas & Channels
+  description: API para gestão de Personas (roteiristas IA) e Channels (canais YouTube)
+  version: 1.0.0
+  contact:
+    name: ShortsAI Support
+    
+servers:
+  - url: http://localhost:3333/api
+    description: Development
+  - url: https://api.shortsai.com/api
+    description: Production
+
+tags:
+  - name: Personas
+    description: Gestão de roteiristas IA
+  - name: Channels
+    description: Gestão de canais YouTube
+  - name: Projects
+    description: Criação de projetos com personas
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+      
+  schemas:
+    Persona:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [SYSTEM, CUSTOM]
+        visibility:
+          type: string
+          enum: [PUBLIC, PRIVATE]
+        requiredPlan:
+          type: string
+          enum: [free, pro, enterprise]
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        isOfficial:
+          type: boolean
+        isFeatured:
+          type: boolean
+        isPremium:
+          type: boolean
+        systemInstruction:
+          type: string
+        temperature:
+          type: number
+          format: float
+        topP:
+          type: number
+          format: float
+        topK:
+          type: integer
+        maxOutputTokens:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        usageCount:
+          type: integer
+        lastUsedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+          
+    Channel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        googleAccountId:
+          type: string
+          format: uuid
+        youtubeChannelId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        thumbnail:
+          type: string
+          format: uri
+        personaId:
+          type: string
+          format: uuid
+        isActive:
+          type: boolean
+        subscriberCount:
+          type: integer
+        videoCount:
+          type: integer
+        viewCount:
+          type: integer
+          format: int64
+        lastSyncedAt:
+          type: string
+          format: date-time
+        persona:
+          $ref: '#/components/schemas/PersonaBasic'
+          
+    PersonaBasic:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        category:
+          type: string
+          
+    CreatePersona:
+      type: object
+      required:
+        - name
+        - systemInstruction
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        systemInstruction:
+          type: string
+        temperature:
+          type: number
+          default: 0.7
+        topP:
+          type: number
+          default: 0.9
+        topK:
+          type: integer
+          default: 40
+        maxOutputTokens:
+          type: integer
+          default: 8192
+        tags:
+          type: array
+          items:
+            type: string
+            
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: object
+
+security:
+  - cookieAuth: []
+
+paths:
+  /personas:
+    get:
+      tags:
+        - Personas
+      summary: Lista personas disponíveis
+      description: Retorna personas disponíveis para o usuário baseado no plano (FREE/PRO)
+      responses:
+        '200':
+          description: Lista de personas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  personas:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Persona'
+                  total:
+                    type: integer
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+    post:
+      tags:
+        - Personas
+      summary: Cria persona CUSTOM
+      description: Cria uma persona customizada (requer plano PRO)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePersona'
+      responses:
+        '201':
+          description: Persona criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Persona'
+        '400':
+          description: Dados inválidos
+        '403':
+          description: Limite de personas atingido
+        '401':
+          description: Não autenticado
+          
+  /personas/{id}:
+    get:
+      tags:
+        - Personas
+      summary: Obtém detalhes de uma persona
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Detalhes da persona
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Persona'
+        '403':
+          description: Sem acesso a esta persona
+        '404':
+          description: Persona não encontrada
+          
+    patch:
+      tags:
+        - Personas
+      summary: Atualiza uma persona
+      description: Apenas dono ou admin podem atualizar
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                systemInstruction:
+                  type: string
+                temperature:
+                  type: number
+      responses:
+        '200':
+          description: Persona atualizada
+        '403':
+          description: Sem permissão
+        '404':
+          description: Não encontrada
+          
+  /channels/user:
+    get:
+      tags:
+        - Channels
+      summary: Lista canais do usuário
+      responses:
+        '200':
+          description: Lista de canais
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  channels:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Channel'
+                  total:
+                    type: integer
+                    
+  /channels/discover:
+    post:
+      tags:
+        - Channels
+      summary: Descobre canais YouTube
+      description: Busca canais da conta Google do usuário
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - accountId
+              properties:
+                accountId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Canais encontrados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  channels:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        youtubeChannelId:
+                          type: string
+                        name:
+                          type: string
+                        statistics:
+                          type: object
+        '400':
+          description: accountId obrigatório
+        '500':
+          description: Erro na YouTube API
+          
+  /channels/import:
+    post:
+      tags:
+        - Channels
+      summary: Importa canal para o banco
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - accountId
+                - youtubeChannelId
+              properties:
+                accountId:
+                  type: string
+                youtubeChannelId:
+                  type: string
+      responses:
+        '201':
+          description: Canal importado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+                
+  /channels/{id}/persona:
+    patch:
+      tags:
+        - Channels
+      summary: Atribui persona ao canal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                personaId:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Persona atribuída
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+        '403':
+          description: Sem acesso
+          
+  /projects:
+    post:
+      tags:
+        - Projects
+      summary: Cria projeto com persona
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - topic
+                - style
+                - language
+                - voice_name
+                - tts_provider
+              properties:
+                topic:
+                  type: string
+                style:
+                  type: string
+                language:
+                  type: string
+                voice_name:
+                  type: string
+                tts_provider:
+                  type: string
+                  enum: [gemini, elevenlabs]
+                channel_id:
+                  type: string
+                  format: uuid
+                  description: Canal de destino (opcional)
+                persona_id:
+                  type: string
+                  format: uuid
+                  description: Persona para geração (opcional)
+                duration_config:
+                  type: object
+                  properties:
+                    min:
+                      type: integer
+                    max:
+                      type: integer
+      responses:
+        '201':
+          description: Projeto criado
+        '403':
+          description: Limite diário atingido
