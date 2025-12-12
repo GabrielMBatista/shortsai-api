@@ -51,10 +51,10 @@ export class ScriptService {
         if (options?.channelId) {
             const recentProjects = await prisma.project.findMany({
                 where: {
-                    channelId: options.channelId,
+                    channel_id: options.channelId,
                     status: 'completed'
                 },
-                orderBy: { createdAt: 'desc' },
+                orderBy: { created_at: 'desc' },
                 take: 5,
                 select: {
                     generated_title: true,
@@ -103,9 +103,9 @@ Traga novidade e frescor ao conteúdo.
             const result = await executeRequest(isSystem, async () => {
                 const response = await ai.models.generateContent({
                     model: "gemini-2.0-flash-exp",
-                    systemInstruction: systemInstruction || undefined,
                     contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
                     config: {
+                        systemInstruction: systemInstruction || undefined,
                         responseMimeType: "application/json",
                         ...generationConfig
                     }
