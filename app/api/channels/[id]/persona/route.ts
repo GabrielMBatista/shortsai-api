@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function PATCH(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const session = await auth();
@@ -18,10 +18,11 @@ export async function PATCH(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const { id } = await params;
         const { personaId } = await request.json();
 
         const channel = await ChannelService.assignPersona(
-            params.id,
+            id,
             session.user.id,
             personaId || null
         );

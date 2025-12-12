@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const session = await auth();
@@ -18,13 +18,14 @@ export async function GET(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const persona = await PersonaService.getPersona(params.id);
+        const { id } = await params;
+        const persona = await PersonaService.getPersona(id);
         if (!persona) {
             return NextResponse.json({ error: 'Persona not found' }, { status: 404 });
         }
 
         // Verificar acesso
-        const hasAccess = await PersonaService.canAccessPersona(session.user.id, params.id);
+        const hasAccess = await PersonaService.canAccessPersona(session.user.id, id);
         if (!hasAccess) {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
@@ -45,7 +46,7 @@ export async function GET(
  */
 export async function PATCH(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const session = await auth();
@@ -53,8 +54,9 @@ export async function PATCH(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const { id } = await params;
         const body = await request.json();
-        const persona = await PersonaService.updatePersona(params.id, session.user.id, body);
+        const persona = await PersonaService.updatePersona(id, session.user.id, body);
 
         return NextResponse.json(persona);
     } catch (error: any) {
