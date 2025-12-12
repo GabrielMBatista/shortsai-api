@@ -19,6 +19,8 @@ export const createProjectSchema = z.object({
     generated_tiktok_text: z.string().optional(),
     generated_tiktok_hashtags: z.array(z.string()).optional(),
     script_metadata: z.any().optional(),
+    channel_id: z.string().optional().nullable(),
+    persona_id: z.string().optional().nullable(),
 });
 
 export const updateProjectSchema = z.object({
@@ -39,6 +41,8 @@ export const updateProjectSchema = z.object({
     folder_id: z.string().optional().nullable(),
     is_archived: z.boolean().optional(),
     tags: z.array(z.string()).optional(),
+    channel_id: z.string().optional().nullable(),
+    persona_id: z.string().optional().nullable(),
 });
 
 export const createCharacterSchema = z.object({
