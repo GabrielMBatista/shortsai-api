@@ -327,11 +327,25 @@ export class WorkflowEngine {
     }
 
     private static async checkProjectCompletion(project: any) {
-        const allScenesDone = project.scenes.every((s: any) =>
-            s.image_status === SceneStatus.completed &&
-            s.audio_status === SceneStatus.completed &&
-            s.video_status === SceneStatus.completed
+        // Determinar se o projeto está gerando vídeos (não apenas imagens)
+        const isGeneratingVideos = project.scenes.some((s: any) =>
+            s.media_type === 'video' ||
+            ['completed', 'processing', 'loading', 'queued', 'pending'].includes(s.video_status)
         );
+
+        // Se está gerando vídeos, exigir video_status completed
+        // Caso contrário, apenas image + audio
+        const allScenesDone = project.scenes.every((s: any) => {
+            const imageAndAudioDone =
+                s.image_status === SceneStatus.completed &&
+                s.audio_status === SceneStatus.completed;
+
+            if (isGeneratingVideos) {
+                return imageAndAudioDone && s.video_status === SceneStatus.completed;
+            }
+            return imageAndAudioDone;
+        });
+
         const musicDone = !project.include_music || project.bg_music_status === MusicStatus.completed;
 
         if (allScenesDone && musicDone) {

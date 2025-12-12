@@ -198,7 +198,11 @@ export class WorkflowService {
         if (!project) return null;
 
         let generationMessage = '';
-        if (project.status === 'generating') {
+        if (project.status === 'completed') {
+            generationMessage = 'Generation completed successfully!';
+        } else if (project.status === 'failed') {
+            generationMessage = 'Generation failed. Please check errors.';
+        } else if (project.status === 'generating') {
             const processingScene = project.scenes.find(s =>
                 s.image_status === SceneStatus.processing ||
                 s.image_status === SceneStatus.loading ||
