@@ -51,9 +51,19 @@ export class ChannelService {
             statistics: {
                 subscriberCount: parseInt(ch.statistics?.subscriberCount || '0'),
                 videoCount: parseInt(ch.statistics?.videoCount || '0'),
-                viewCount: BigInt(ch.statistics?.viewCount || '0')
+                viewCount: (ch.statistics?.viewCount || '0')
             }
         }));
+    }
+
+    private static serialize(channel: any) {
+        if (!channel) return null;
+        return {
+            ...channel,
+            viewCount: channel.viewCount ? channel.viewCount.toString() : '0',
+            // Handle nested relations if necessary, but shallow copy usually preserves them unless they also have BigInts
+            // Account doesn't have BigInts. Persona doesn't.
+        };
     }
 
     /**
@@ -73,9 +83,11 @@ export class ChannelService {
             where: { userId, youtubeChannelId }
         });
 
+        let channel;
+
         if (existing) {
             // Atualizar stats
-            return await prisma.channel.update({
+            channel = await prisma.channel.update({
                 where: { id: existing.id },
                 data: {
                     name: channelData.name,
@@ -83,37 +95,39 @@ export class ChannelService {
                     thumbnail: channelData.thumbnail,
                     subscriberCount: channelData.statistics.subscriberCount,
                     videoCount: channelData.statistics.videoCount,
-                    viewCount: channelData.statistics.viewCount,
+                    viewCount: BigInt(channelData.statistics.viewCount), // Store as BigInt
                     lastSyncedAt: new Date()
+                },
+                include: { persona: true }
+            });
+        } else {
+            // Criar novo
+            channel = await prisma.channel.create({
+                data: {
+                    userId,
+                    googleAccountId: accountId,
+                    youtubeChannelId,
+                    name: channelData.name,
+                    description: channelData.description,
+                    thumbnail: channelData.thumbnail,
+                    subscriberCount: channelData.statistics.subscriberCount,
+                    videoCount: channelData.statistics.videoCount,
+                    viewCount: BigInt(channelData.statistics.viewCount), // Store as BigInt
+                    lastSyncedAt: new Date(),
+                    isActive: true
                 },
                 include: { persona: true }
             });
         }
 
-        // Criar novo
-        return await prisma.channel.create({
-            data: {
-                userId,
-                googleAccountId: accountId,
-                youtubeChannelId,
-                name: channelData.name,
-                description: channelData.description,
-                thumbnail: channelData.thumbnail,
-                subscriberCount: channelData.statistics.subscriberCount,
-                videoCount: channelData.statistics.videoCount,
-                viewCount: channelData.statistics.viewCount,
-                lastSyncedAt: new Date(),
-                isActive: true
-            },
-            include: { persona: true }
-        });
+        return this.serialize(channel);
     }
 
     /**
      * Lista canais do usuário
      */
     static async getUserChannels(userId: string) {
-        return await prisma.channel.findMany({
+        const channels = await prisma.channel.findMany({
             where: { userId, isActive: true },
             include: {
                 persona: {
@@ -134,6 +148,8 @@ export class ChannelService {
             },
             orderBy: { createdAt: 'desc' }
         });
+
+        return channels.map(c => this.serialize(c));
     }
 
     /**
@@ -157,11 +173,13 @@ export class ChannelService {
             }
         }
 
-        return await prisma.channel.update({
+        const updated = await prisma.channel.update({
             where: { id: channelId },
             data: { personaId },
             include: { persona: true }
         });
+
+        return this.serialize(updated);
     }
 
     /**
@@ -201,7 +219,7 @@ export class ChannelService {
         const stats = response.data.items?.[0]?.statistics;
         if (!stats) throw new Error('Stats não disponíveis');
 
-        return await prisma.channel.update({
+        const updated = await prisma.channel.update({
             where: { id: channelId },
             data: {
                 subscriberCount: parseInt(stats.subscriberCount || '0'),
@@ -210,5 +228,7 @@ export class ChannelService {
                 lastSyncedAt: new Date()
             }
         });
+
+        return this.serialize(updated);
     }
 }
