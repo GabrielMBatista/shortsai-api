@@ -2,6 +2,25 @@ import { prisma } from '@/lib/prisma';
 import { GoogleGenAI } from "@google/genai";
 
 export class KeyManager {
+    private static decrypt(encoded: string): string {
+        try {
+            const SALT = 'ShortsAI-Studio-V1-Salt';
+            const textToChars = (text: string) => text.split("").map((c) => c.charCodeAt(0));
+            const applySaltToChar = (code: any) => textToChars(SALT).reduce((a: number, b: number) => a ^ b, code);
+
+            // Check if hex (basic check)
+            if (!/^[0-9a-fA-F]+$/.test(encoded)) return encoded;
+
+            return (encoded.match(/.{1,2}/g) || [])
+                .map((hex) => parseInt(hex, 16))
+                .map(applySaltToChar)
+                .map((charCode) => String.fromCharCode(charCode))
+                .join("");
+        } catch (e) {
+            return encoded;
+        }
+    }
+
     static async getGeminiKey(userId: string, providedKey?: string): Promise<{ key: string, isSystem: boolean }> {
         if (!userId) {
             throw new Error("userId is required but was undefined. This likely means the payload was not constructed correctly.");
@@ -13,8 +32,10 @@ export class KeyManager {
         const userKey = keys?.gemini_key;
 
         if (userKey) {
-            if (!userKey.startsWith('AIza')) throw new Error("Invalid Gemini API Key format (must start with AIza)");
-            return { key: userKey, isSystem: false };
+            const decryptedKey = this.decrypt(userKey);
+            // Validation restored on decrypted key
+            if (!decryptedKey.startsWith('AIza')) throw new Error("Invalid Gemini API Key format (must start with AIza)");
+            return { key: decryptedKey, isSystem: false };
         }
 
         const systemKey = process.env.GEMINI_API_KEY;
@@ -38,7 +59,7 @@ export class KeyManager {
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
         const userKey = keys?.elevenlabs_key;
 
-        if (userKey) return { key: userKey, isSystem: false };
+        if (userKey) return { key: this.decrypt(userKey), isSystem: false };
 
         const systemKey = process.env.ELEVENLABS_API_KEY;
         if (!systemKey) throw new Error("ElevenLabs API Key missing");
@@ -56,7 +77,7 @@ export class KeyManager {
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
         const userKey = keys?.groq_key;
 
-        if (userKey) return { key: userKey, isSystem: false };
+        if (userKey) return { key: this.decrypt(userKey), isSystem: false };
 
         const systemKey = process.env.GROQ_API_KEY;
         if (!systemKey) throw new Error("Groq API Key missing");
@@ -74,7 +95,7 @@ export class KeyManager {
         const keys = await prisma.apiKey.findUnique({ where: { user_id: userId } });
         const userKey = keys?.suno_key;
 
-        if (userKey) return { key: userKey, isSystem: false };
+        if (userKey) return { key: this.decrypt(userKey), isSystem: false };
 
         const systemKey = process.env.SUNO_API_KEY;
         // Suno might be optional or system only?
