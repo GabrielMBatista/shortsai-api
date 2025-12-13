@@ -23,7 +23,21 @@ export async function GET(
             return NextResponse.json({ error: 'Missing accountId' }, { status: 400 });
         }
 
-        // 1. Fetch the specific account to get credentials
+        // 1. Fetch the Channel to get youtubeChannelId
+        const channel = await prisma.channel.findUnique({
+            where: { id: channelId },
+            include: { account: true }
+        });
+
+        if (!channel) {
+            return NextResponse.json({ error: 'Channel not found' }, { status: 404 });
+        }
+
+        // Use the accountId from query param or fallback to channel's linked account
+        // Ideally we should verify if the passed accountId matches or has access, but for now we trust the flow
+        // The previous code fetched account by accountId anyway.
+
+        // 2. Fetch the specific account to get credentials
         const account = await prisma.account.findUnique({
             where: {
                 id: accountId,
@@ -35,7 +49,7 @@ export async function GET(
             return NextResponse.json({ error: 'Account not found or missing credentials' }, { status: 404 });
         }
 
-        // 2. Setup Google Auth
+        // 3. Setup Google Auth
         const authClient = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
             process.env.GOOGLE_CLIENT_SECRET
@@ -48,11 +62,11 @@ export async function GET(
 
         const youtube = google.youtube({ version: 'v3', auth: authClient });
 
-        // 3. Get Channel "Uploads" Playlist ID
+        // 4. Get Channel "Uploads" Playlist ID
         // Saves quota by asking only for contentDetails
         const channelRes = await youtube.channels.list({
             part: ['contentDetails'],
-            id: [channelId]
+            id: [channel.youtubeChannelId] // Use the actual YouTube ID
         });
 
         const uploadsPlaylistId = channelRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
