@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 const updateFolderSchema = z.object({
     name: z.string().min(1).max(50).optional(),
     parent_id: z.string().nullable().optional(),
+    channel_id: z.string().nullable().optional(),
 });
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -25,7 +26,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             return NextResponse.json({ error: 'Validation Error', details: validation.error.format() }, { status: 400 });
         }
 
-        const { name, parent_id } = validation.data;
+        const { name, parent_id, channel_id } = validation.data;
         const user_id = session.user.id;
 
         // Verify ownership
@@ -48,6 +49,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         const dataToUpdate: any = {};
         if (name !== undefined) dataToUpdate.name = name;
         if (parent_id !== undefined) dataToUpdate.parent_id = parent_id;
+        if (channel_id !== undefined) dataToUpdate.channel_id = channel_id;
 
         const updatedFolder = await prisma.folder.update({
             where: { id },
