@@ -13,9 +13,10 @@ export class AIService {
         style: string,
         language: string,
         durationConfig: { min: number, max: number, targetScenes?: number },
-        keys?: { gemini?: string }
+        keys?: { gemini?: string },
+        options?: { personaId?: string; channelId?: string }
     ) {
-        return ScriptService.generateScript(userId, topic, style, language, durationConfig, keys);
+        return ScriptService.generateScript(userId, topic, style, language, durationConfig, keys, options);
     }
 
     static async generateImage(userId: string, prompt: string, style: string, keys?: { gemini?: string }) {

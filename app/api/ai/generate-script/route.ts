@@ -9,7 +9,7 @@ export async function POST(request: Request) {
     try {
         const body = await request.json();
         userId = body.userId;
-        const { topic, style, language, durationConfig, apiKeys } = body;
+        const { topic, style, language, durationConfig, apiKeys, personaId, channelId } = body;
 
         if (!userId || !topic || !style) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -21,7 +21,8 @@ export async function POST(request: Request) {
             style,
             language || 'English',
             durationConfig || { min: 65, max: 90 },
-            apiKeys
+            apiKeys,
+            { personaId, channelId }
         );
 
         return NextResponse.json(script);
