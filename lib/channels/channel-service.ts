@@ -231,4 +231,113 @@ export class ChannelService {
 
         return this.serialize(updated);
     }
+
+    /**
+     * Busca últimos vídeos do canal no YouTube
+     * @param channelId - ID do canal no banco
+     * @param options - Opções de busca (maxResults, orderBy)
+     * @returns Lista de vídeos com estatísticas
+     */
+    static async getChannelVideos(
+        channelId: string,
+        options?: {
+            maxResults?: number;
+            orderBy?: 'date' | 'viewCount';
+        }
+    ) {
+        const channel = await prisma.channel.findUnique({
+            where: { id: channelId },
+            include: { account: true }
+        });
+
+        if (!channel) throw new Error('Canal não encontrado');
+
+        const account = channel.account;
+        if (!account.refresh_token) {
+            throw new Error('Refresh token não disponível');
+        }
+
+        const authClient = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI
+        );
+
+        authClient.setCredentials({
+            refresh_token: account.refresh_token,
+            access_token: account.access_token || undefined
+        });
+
+        const youtube = google.youtube({ version: 'v3', auth: authClient });
+
+        try {
+            // 1. Buscar upload playlist do canal
+            const channelResponse = await youtube.channels.list({
+                part: ['contentDetails'],
+                id: [channel.youtubeChannelId]
+            });
+
+            const uploadsPlaylistId = channelResponse.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+
+            if (!uploadsPlaylistId) {
+                console.warn(`[ChannelService] No uploads playlist for channel ${channel.youtubeChannelId}`);
+                return [];
+            }
+
+            // 2. Buscar vídeos da playlist
+            const maxResults = options?.maxResults || 20;
+            const playlistResponse = await youtube.playlistItems.list({
+                part: ['snippet', 'contentDetails'],
+                playlistId: uploadsPlaylistId,
+                maxResults: Math.min(maxResults, 50) // YouTube API limit
+            });
+
+            const videoIds = playlistResponse.data.items
+                ?.map(item => item.contentDetails?.videoId)
+                .filter((id): id is string => Boolean(id)) || [];
+
+            if (videoIds.length === 0) {
+                return [];
+            }
+
+            // 3. Buscar detalhes dos vídeos (incluindo statistics)
+            const videosResponse = await youtube.videos.list({
+                part: ['snippet', 'statistics', 'contentDetails'],
+                id: videoIds as string[]
+            });
+
+            let videos = (videosResponse.data.items || []).map((video: any) => ({
+                id: video.id!,
+                title: video.snippet?.title || '',
+                description: video.snippet?.description || '',
+                tags: video.snippet?.tags || [],
+                publishedAt: video.snippet?.publishedAt,
+                thumbnails: video.snippet?.thumbnails,
+                statistics: {
+                    viewCount: parseInt(video.statistics?.viewCount || '0'),
+                    likeCount: parseInt(video.statistics?.likeCount || '0'),
+                    commentCount: parseInt(video.statistics?.commentCount || '0')
+                },
+                duration: video.contentDetails?.duration, // ISO 8601 format (PT1M30S)
+            }));
+
+            // 4. Ordenar se solicitado
+            if (options?.orderBy === 'viewCount') {
+                videos = videos.sort((a: any, b: any) => b.statistics.viewCount - a.statistics.viewCount);
+            }
+            // Por padrão já vem ordenado por data (mais recentes primeiro)
+
+            return videos;
+        } catch (error: any) {
+            console.error('[ChannelService] Failed to fetch channel videos:', error.message);
+
+            // Se erro de quota ou autenticação, não falhar completamente
+            if (error.code === 403 || error.code === 401) {
+                console.warn('[ChannelService] YouTube API quota exceeded or auth failed, returning empty');
+                return [];
+            }
+
+            throw error;
+        }
+    }
 }

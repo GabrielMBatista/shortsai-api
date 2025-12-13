@@ -49,38 +49,95 @@ export class ScriptService {
         // 2. Buscar contexto anti-repetição (se canal fornecido)
         let antiRepetitionContext = '';
         if (options?.channelId) {
-            const recentProjects = await prisma.project.findMany({
-                where: {
-                    channel_id: options.channelId,
-                    status: 'completed'
-                },
-                orderBy: { created_at: 'desc' },
-                take: 5,
-                select: {
-                    generated_title: true,
-                    topic: true,
-                    scenes: {
-                        select: {
-                            visual_description: true,
-                            narration: true
-                        },
-                        take: 3 // Primeiras 3 cenas de cada
+            const { ChannelService } = await import('../../../lib/channels/channel-service');
+
+            const [recentProjects, youtubeVideos] = await Promise.all([
+                // Projetos criados na plataforma para ESTE canal
+                prisma.project.findMany({
+                    where: {
+                        channel_id: options.channelId,
+                        status: 'completed'
+                    },
+                    orderBy: { created_at: 'desc' },
+                    take: 5,
+                    select: {
+                        generated_title: true,
+                        topic: true,
+                        scenes: {
+                            select: {
+                                visual_description: true,
+                                narration: true
+                            },
+                            take: 3 // Primeiras 3 cenas de cada
+                        }
                     }
-                }
+                }),
+
+                // 🆕 Vídeos do YouTube (para contexto real do canal)
+                ChannelService.getChannelVideos(options.channelId, {
+                    maxResults: 20
+                }).catch(err => {
+                    console.warn('[ScriptService] Failed to fetch YouTube videos:', err.message);
+                    return [];
+                })
+            ]);
+
+            // Construir contexto combinado (projetos + vídeos)
+            const allContent: { title: string; source: string; performance?: number }[] = [];
+
+            // Adicionar projetos da plataforma
+            recentProjects.forEach(p => {
+                allContent.push({
+                    title: p.generated_title || p.topic,
+                    source: 'platform'
+                });
             });
 
-            if (recentProjects.length > 0) {
-                const recentTopics = recentProjects.map(p => p.generated_title || p.topic).filter(Boolean);
+            // Adicionar vídeos do YouTube (ordenados por views)
+            youtubeVideos
+                .sort((a: any, b: any) => b.statistics.viewCount - a.statistics.viewCount)
+                .slice(0, 15) // Top 15 vídeos
+                .forEach((v: any) => {
+                    allContent.push({
+                        title: v.title,
+                        source: 'youtube',
+                        performance: v.statistics.viewCount
+                    });
+                });
+
+            if (allContent.length > 0) {
+                // Formatar números grandes
+                const formatViews = (views: number): string => {
+                    if (views >= 1_000_000) return `${(views / 1_000_000).toFixed(1)}M`;
+                    if (views >= 1_000) return `${(views / 1_000).toFixed(1)}K`;
+                    return views.toString();
+                };
 
                 antiRepetitionContext = `
 ═══════════════════════════════════════
-CONTEXTO ANTI-REPETIÇÃO:
+CONTEXTO ANTI-REPETIÇÃO & PERFORMANCE:
 ═══════════════════════════════════════
-Os últimos ${recentProjects.length} vídeos deste canal abordaram:
-${recentTopics.map((t, i) => `${i + 1}. ${t}`).join('\n')}
 
-⚠️ IMPORTANTE: Evite repetir temas, abordagens e estruturas narrativas similares.
-Traga novidade e frescor ao conteúdo.
+📊 HISTÓRICO DO CANAL (${allContent.length} vídeos analisados):
+
+${allContent.slice(0, 20).map((item, i) => {
+                    const perfLabel = item.performance
+                        ? ` [${item.performance >= 10000 ? '🔥 ' : ''}${formatViews(item.performance)} views]`
+                        : '';
+                    const sourceLabel = item.source === 'youtube' ? '(YouTube)' : '(Platform)';
+                    return `${i + 1}. ${item.title}${perfLabel} ${sourceLabel}`;
+                }).join('\n')}
+
+${youtubeVideos.length > 0 ? `
+🎯 INSIGHTS DE PERFORMANCE:
+- Total de vídeos no canal: ${youtubeVideos.length}
+- Vídeos com ${formatViews(10000)}+ views: ${youtubeVideos.filter((v: any) => v.statistics.viewCount >= 10000).length}
+` : ''}
+
+⚠️ IMPORTANTE: 
+1. Evite repetir temas já cobertos, especialmente os bem-sucedidos (alto views)
+2. Busque novos ângulos ou abordagens diferentes
+3. Mantenha a voz e estilo do canal, mas traga frescor ao conteúdo
 ═══════════════════════════════════════
 `;
             }

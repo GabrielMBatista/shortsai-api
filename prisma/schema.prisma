@@ -207,13 +207,17 @@ model Folder {
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
   parent_id  String?
+  channel_id String?   @map("channel_id")
+  
   parent     Folder?   @relation("SubFolders", fields: [parent_id], references: [id], onDelete: Cascade)
   children   Folder[]  @relation("SubFolders")
   user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  channel    Channel?  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
   projects   Project[]
 
   @@unique([user_id, name])
   @@index([user_id])
+  @@index([user_id, channel_id])
   @@map("folders")
 }
 
@@ -578,6 +582,7 @@ model Channel {
   persona           Persona?           @relation(fields: [personaId], references: [id], onDelete: SetNull)
   projects          Project[]
   analytics         ChannelAnalytics[]
+  folders           Folder[]
   
   @@unique([userId, youtubeChannelId])
   @@index([userId])
