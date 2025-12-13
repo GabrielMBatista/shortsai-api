@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 const createFolderSchema = z.object({
     name: z.string().min(1).max(50),
     parent_id: z.string().optional().nullable(),
+    channel_id: z.string().optional().nullable(), // 🆕 Channel-first hierarchy
 });
 
 import { cachedQuery, invalidateCache } from '@/lib/redis';
@@ -28,14 +29,29 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Validation Error', details: validation.error.format() }, { status: 400 });
         }
 
-        const { name, parent_id } = validation.data;
+        const { name, parent_id, channel_id } = validation.data;
         const user_id = session.user.id;
+
+        // 🆕 Validate channel ownership if channel_id provided
+        if (channel_id) {
+            const channel = await prisma.channel.findUnique({
+                where: { id: channel_id }
+            });
+
+            if (!channel || channel.userId !== user_id) {
+                return NextResponse.json(
+                    { error: 'Channel not found or unauthorized' },
+                    { status: 403 }
+                );
+            }
+        }
 
         const folder = await prisma.folder.create({
             data: {
                 name,
                 user_id,
-                parent_id
+                parent_id,
+                channel_id // 🆕 Link to channel
             },
         });
 
@@ -62,10 +78,29 @@ export async function GET(request: Request) {
         }
 
         const user_id = session.user.id;
+        const { searchParams } = new URL(request.url);
+        const channelId = searchParams.get('channel_id');
 
-        const data = await cachedQuery(`api:folders:${user_id}`, async () => {
+        // 🆕 Dynamic cache key based on filter
+        const cacheKey = channelId
+            ? `api:folders:${user_id}:channel:${channelId}`
+            : `api:folders:${user_id}`;
+
+        const data = await cachedQuery(cacheKey, async () => {
+            // 🆕 Build where clause based on channel filter
+            const where: any = { user_id };
+
+            if (channelId === 'null' || channelId === '') {
+                // Get only global folders (no channel)
+                where.channel_id = null;
+            } else if (channelId) {
+                // Get folders for specific channel
+                where.channel_id = channelId;
+            }
+            // If no channelId param, return ALL folders (current behavior)
+
             const folders = await prisma.folder.findMany({
-                where: { user_id },
+                where,
                 orderBy: { name: 'asc' },
                 include: {
                     _count: {
