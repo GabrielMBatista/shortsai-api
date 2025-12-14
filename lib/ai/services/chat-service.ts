@@ -14,16 +14,7 @@ export class ChatService {
         history: { role: 'user' | 'model', parts: { text: string }[] }[] = [],
         channelId?: string
     ) {
-        // 1. Load Persona
-        const persona = await prisma.persona.findUnique({
-            where: { id: personaId }
-        });
-
-        if (!persona) {
-            throw new Error('Persona not found');
-        }
-
-        // 2. Fetch Channel Context (if provided)
+        // 1. Fetch Channel Context (Pre-fetch for both flows)
         let channelContext = '';
         if (channelId) {
             try {
@@ -80,10 +71,36 @@ STRATEGIC INSTRUCTIONS:
             }
         }
 
-        // 3. Get AI Client
+        // 2. specialized handling for Weekly Schedules (Scalable Architecture)
+        // Heuristic: If prompt mentions "cronograma" and "semana", use the Multi-Step Scheduler
+        // This ensures the huge JSON is generated in steps (Blueprint -> Expansion -> Assembly)
+        const isWeeklyRequest =
+            (message.toLowerCase().includes('cronograma') && message.toLowerCase().includes('semana')) ||
+            (message.toLowerCase().includes('planejamento') && message.toLowerCase().includes('semanal'));
+
+        if (isWeeklyRequest) {
+            const { WeeklyScheduler } = await import('./weekly-scheduler');
+            return WeeklyScheduler.generate(userId, personaId, message, channelContext);
+        }
+
+        // 3. Load Persona (Standard Flow)
+        const persona = await prisma.persona.findUnique({
+            where: { id: personaId }
+        });
+
+        if (!persona) {
+            throw new Error('Persona not found');
+        }
+
+        /* 
+           Logic for adding channelContext to standard prompt follows below...
+           Notice we already computed channelContext, so we just append it.
+        */
+
+        // 4. Get AI Client
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId);
 
-        // 4. Construct System Instruction
+        // 5. Construct System Instruction
         const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const baseSystemInstruction = persona.systemInstruction || 'You are a helpful AI assistant.';
 
