@@ -59,3 +59,33 @@ ENV PORT=3333
 ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]
+
+# ======================================
+# Worker stage for Schedule Worker
+# ======================================
+FROM base AS worker
+RUN apt-get update -y && apt-get install -y openssl ca-certificates
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Copy node_modules from deps (includes all dependencies)
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy prisma schema and generated client
+COPY --from=builder /app/prisma ./prisma
+
+# Copy all source files (TypeScript) that workers need
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/app ./app
+
+# Install tsx globally for TypeScript execution
+RUN npm install -g tsx@latest
+
+# Install Prisma CLI for schema access
+RUN npm install -g prisma@5.22.0
+
+EXPOSE 3333
+
+# Default command (can be overridden in docker-compose)
+CMD ["tsx", "lib/workers/unified-worker.ts"]

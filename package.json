@@ -11,7 +11,7 @@
     "db:setup": "prisma migrate deploy && npm run db:seed",
     "postinstall": "prisma generate",
     "worker:media": "tsx media-worker/index.ts",
-    "worker:schedule": "tsx lib/workers/schedule-worker.ts",
+    "worker": "tsx lib/workers/unified-worker.ts",
     "seed:personas": "tsx prisma/seeds/personas.seed.ts"
   },
   "prisma": {
