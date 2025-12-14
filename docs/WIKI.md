@@ -1,7 +1,9 @@
 # ShortsAI API Wiki
 
 ## 1. Description
-The **ShortsAI API** is the backend core of the ShortsAI platform. It is built using **Next.js (App Router)** and serves as the central orchestrator for user authentication, data persistence, and managing the video generation pipeline. It exposes RESTful endpoints for the frontend (Studio) and communicates with the Python Worker for media rendering.
+The **ShortsAI API** is the backend core of the ShortsAI platform. It is built using **Next.js (App Router)** and serves as the central orchestrator for user authentication, data persistence, and managing the AI generation pipeline (Text/Image/Audio).
+
+> **Note**: This backend NO LONGER performs video rendering. Rendering has been moved to the client-side (Studio) to reduce infrastructure costs.
 
 ## 2. Architecture
 
@@ -9,20 +11,23 @@ The **ShortsAI API** is the backend core of the ShortsAI platform. It is built u
 - **Framework**: Next.js 15 (App Router)
 - **Language**: TypeScript
 - **Database**: PostgreSQL (via Prisma ORM)
-- **Queue/Caching**: Redis (BullMQ for job queues, IoRedis for caching)
 - **Authentication**: NextAuth.js (v5 Beta)
 - **Storage**: Cloudflare R2 (via AWS SDK v3)
-- **AI Integration**: Google Gemini, ElevenLabs
+- **AI Integration**: Google Gemini (Script/Image), ElevenLabs (Audio), Groq (Fast TTS).
 
 ### High-Level Design
-The API follows a monolithic structure within Next.js route handlers. It implements a **Hybrid Architecture**:
-1.  **Synchronous Operations**: CRUD for Users, Projects, Scenes (handled directly by Next.js API routes).
-2.  **Asynchronous Operations**: Video rendering jobs are pushed to a Redis queue (or directly via HTTP to the Worker in the current Cloud Run setup) and monitored via status polling.
+The API follows a monolithic structure within Next.js route handlers. It implements a **Serverless-First Architecture**:
+
+1.  **Synchronous Operations**: CRUD for Users, Projects, Scenes.
+2.  **AI Asset Generation**:
+    -   The API acts as a secure proxy to AI providers.
+    -   It manages prompts, context, and rate limits.
+    -   It uploads generated assets (Images/Audio) to R2 and returns URLs to the frontend.
 
 ### Key Modules
-- **`app/api/`**: REST endpoints organized by resource (`users`, `projects`, `render`, etc.).
-- **`lib/`**: Shared utilities (Redis connection, Prisma client, Auth helpers).
-- **`worker/`**: (Source code for the Python worker is co-located here but deployed separately).
+- **`app/api/`**: REST endpoints organized by resource (`users`, `projects`, `personas`, `channels`).
+- **`lib/ai/`**: Services for interacting with AI Providers (`chat-service`, `image-service`, `audio-service`).
+- **`lib/core/`**: Shared utilities (Prisma client, Auth helpers, Key Manager).
 
 ## 3. Data Model (UML Abstract)
 The database schema relies on Users owning Projects, which contain Scenes.
@@ -31,10 +36,10 @@ The database schema relies on Users owning Projects, which contain Scenes.
 erDiagram
     User ||--o{ Project : owns
     User ||--o{ Folder : manages
-    User ||--o{ Subscription : has
+    User ||--o{ Channel : manages
     Project ||--|{ Scene : contains
     Project }|..|{ Character : references
-    Scene ||--o{ Job : triggers
+    Channel ||--o{ Persona : has_default
     
     User {
         string email
@@ -52,7 +57,7 @@ erDiagram
         int sequence_number
         string script_text
         string media_url
-        json word_timings
+        string audio_url
     }
 ```
 
@@ -61,7 +66,7 @@ erDiagram
 ### Infrastructure
 - **Type**: Containerized (Docker)
 - **Platform**: VPS (Coolify/Dokku) or Google Cloud Run.
-- **Environment**: Requires `DATABASE_URL` (Postgres), `REDIS_URL` (Redis), and R2 credentials.
+- **Environment**: Requires `DATABASE_URL` (Postgres) and R2 credentials.
 
 ### Build & Run
 The project uses a standard Next.js build process.
