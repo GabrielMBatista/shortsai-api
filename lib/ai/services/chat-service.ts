@@ -122,7 +122,7 @@ Current Date: ${currentDate}
                         temperature: persona.temperature,
                         topP: persona.topP,
                         topK: persona.topK,
-                        maxOutputTokens: persona.maxOutputTokens
+                        maxOutputTokens: 65536 // Force high limit for Gemini 2.0 Flash (supports huge output)
                     }
                 });
 
