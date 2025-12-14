@@ -16,7 +16,7 @@ export async function POST(
 
         const { id: personaId } = await params;
         const body = await request.json();
-        const { message, history } = body;
+        const { message, history, channelId } = body;
 
         if (!message) {
             return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -26,7 +26,8 @@ export async function POST(
             session.user.id,
             personaId,
             message,
-            history || []
+            history || [],
+            channelId
         );
 
         return NextResponse.json({ response });

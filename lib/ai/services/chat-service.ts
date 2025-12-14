@@ -11,7 +11,8 @@ export class ChatService {
         userId: string,
         personaId: string,
         message: string,
-        history: { role: 'user' | 'model', parts: { text: string }[] }[] = []
+        history: { role: 'user' | 'model', parts: { text: string }[] }[] = [],
+        channelId?: string
     ) {
         // 1. Load Persona
         const persona = await prisma.persona.findUnique({
@@ -22,15 +23,85 @@ export class ChatService {
             throw new Error('Persona not found');
         }
 
-        // 2. Check Access (Ownership or Public/System)
-        // If needed. For now, we assume if they have the ID, they can chat if it's visible.
-        // Assuming system check is done at route level or implied.
+        // 2. Fetch Channel Context (if provided)
+        let channelContext = '';
+        if (channelId) {
+            try {
+                const { ChannelService } = await import('../../../lib/channels/channel-service');
+                const [recentProjects, youtubeVideos] = await Promise.all([
+                    prisma.project.findMany({
+                        where: { channel_id: channelId, status: 'completed' },
+                        orderBy: { created_at: 'desc' },
+                        take: 5,
+                        select: { topic: true, generated_title: true }
+                    }),
+                    ChannelService.getChannelVideos(channelId, { maxResults: 15, orderBy: 'viewCount' })
+                ]);
+
+                const formatViews = (views: number) => {
+                    if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M`;
+                    if (views >= 1000) return `${(views / 1000).toFixed(1)}K`;
+                    return views.toString();
+                };
+
+                const topVideos = youtubeVideos.slice(0, 5).map(v =>
+                    `- "${v.title}" (${formatViews(v.statistics.viewCount)} views)`
+                ).join('\n');
+
+                channelContext = `
+═══════════════════════════════════════
+CHANNEL INTELLIGENCE & PERFORMANCE DATA
+═══════════════════════════════════════
+Use this data to generate high-performing, viral content tailored to this channel's audience.
+
+🔥 TOP PERFORMING VIDEOS (Do more of this style/topic):
+${topVideos || "No data available."}
+
+📅 RECENT PROJECTS (Avoid exact repetition, find new angles):
+${recentProjects.map(p => `- ${p.generated_title || p.topic}`).join('\n') || "None recent."}
+
+STRATEGIC INSTRUCTIONS:
+1. Analyze why the top videos succeeded (audience interest, hook, topic).
+2. Suggest ideas that align with these winning patterns but offer a fresh perspective.
+3. AVOID repeating recently covered topics unless you have a distinct, novel angle.
+═══════════════════════════════════════
+`;
+            } catch (err) {
+                console.warn('[ChatService] Failed to load channel context:', err);
+            }
+        }
 
         // 3. Get AI Client
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId);
 
-        // 4. Construct System Instruction
-        const systemInstruction = persona.systemInstruction || 'You are a helpful AI assistant.';
+        // 4. Construct System Instruction with strict JSON format for ideas
+        const baseSystemInstruction = persona.systemInstruction || 'You are a helpful AI assistant.';
+
+        const jsonEnforcement = `
+═══════════════════════════════════════
+OUTPUT FORMAT ENFORCEMENT
+═══════════════════════════════════════
+If the user asks for a SCRIPT, VIDEO IDEA, or TOPIC, you MUST output valid JSON ONLY.
+Do not wrap in markdown code blocks like \`\`\`json. Just raw JSON.
+
+REQUIRED JSON STRUCTURE FOR SCRIPTS/IDEAS:
+{
+  "videoTitle": "🚀 Hooky Title | Main Keyword",
+  "videoDescription": "Engaging description with CTA.",
+  "shortsHashtags": ["#shorts", "#topic"],
+  "tiktokText": "Viral caption",
+  "tiktokHashtags": ["#fyp", "#topic"],
+  "scenes": [
+    { "sceneNumber": 1, "visualDescription": "...", "narration": "...", "durationSeconds": 5 }
+  ]
+}
+
+If asking for MULTIPLE IDEAS, return an ARRAY of objects with this structure.
+If just chatting, reply normally in plain text.
+═══════════════════════════════════════
+`;
+
+        const finalSystemInstruction = `${channelContext}\n\n${baseSystemInstruction}\n\n${jsonEnforcement}`;
 
         // 5. Execute Request
         const startTime = Date.now();
@@ -46,7 +117,7 @@ export class ChatService {
                         { role: 'user', parts: [{ text: message }] }
                     ],
                     config: {
-                        systemInstruction,
+                        systemInstruction: finalSystemInstruction,
                         temperature: persona.temperature,
                         topP: persona.topP,
                         topK: persona.topK,
@@ -82,7 +153,8 @@ export class ChatService {
                         duration,
                         errorMsg: error?.message,
                         metadata: {
-                            messageLength: message.length
+                            messageLength: message.length,
+                            channelId: channelId
                         }
                     }
                 });
