@@ -44,8 +44,25 @@ export const videoTransferQueue = new Queue(VIDEO_TRANSFER_QUEUE_NAME, {
     },
 });
 
+// Queue for Weekly Schedule Generation (AI Agent)
+export const SCHEDULE_GENERATION_QUEUE_NAME = 'schedule-generation';
+
+export const scheduleGenerationQueue = new Queue(SCHEDULE_GENERATION_QUEUE_NAME, {
+    connection: connectionOptions,
+    defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+            type: 'exponential',
+            delay: 1000,
+        },
+        removeOnComplete: false, // Keep result so we can retrieve it via API
+        removeOnFail: true,
+    },
+});
+
 export const queues = {
     socialPosting: socialPostingQueue,
     videoRendering: videoRenderingQueue,
     videoTransfer: videoTransferQueue,
+    scheduleGeneration: scheduleGenerationQueue,
 };

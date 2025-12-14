@@ -72,15 +72,29 @@ STRATEGIC INSTRUCTIONS:
         }
 
         // 2. specialized handling for Weekly Schedules (Scalable Architecture)
-        // Heuristic: If prompt mentions "cronograma" and "semana", use the Multi-Step Scheduler
-        // This ensures the huge JSON is generated in steps (Blueprint -> Expansion -> Assembly)
         const isWeeklyRequest =
             (message.toLowerCase().includes('cronograma') && message.toLowerCase().includes('semana')) ||
             (message.toLowerCase().includes('planejamento') && message.toLowerCase().includes('semanal'));
 
         if (isWeeklyRequest) {
-            const { WeeklyScheduler } = await import('./weekly-scheduler');
-            return WeeklyScheduler.generate(userId, personaId, message, channelContext);
+            const { scheduleGenerationQueue } = await import('../../queues');
+
+            // Enqueue Job
+            const job = await scheduleGenerationQueue.add('generate-weekly', {
+                userId,
+                personaId,
+                message,
+                channelContext
+            });
+
+            // Return Signal to Frontend
+            // We return a string because the chat interface expects a "text" response for now.
+            // The frontend will parse this invisible signal.
+            return JSON.stringify({
+                type: 'job_started',
+                jobId: job.id,
+                message: "Starting deep research task..."
+            });
         }
 
         // 3. Load Persona (Standard Flow)
