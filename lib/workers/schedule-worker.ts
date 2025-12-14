@@ -42,7 +42,7 @@ worker.on('completed', (job) => {
 });
 
 worker.on('failed', (job, err) => {
-    console.error(`[ScheduleWorker] Job ${job.id} failed with ${err.message}`);
+    console.error(`[ScheduleWorker] Job ${job?.id} failed with ${err.message}`);
 });
 
 export default worker;
