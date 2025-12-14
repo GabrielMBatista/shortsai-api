@@ -74,30 +74,20 @@ STRATEGIC INSTRUCTIONS:
         // 3. Get AI Client
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId);
 
-        // 4. Construct System Instruction with strict JSON format for ideas
+        // 4. Construct System Instruction
+        const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const baseSystemInstruction = persona.systemInstruction || 'You are a helpful AI assistant.';
 
         const jsonEnforcement = `
 ═══════════════════════════════════════
 OUTPUT FORMAT ENFORCEMENT
 ═══════════════════════════════════════
-If the user asks for a SCRIPT, VIDEO IDEA, or TOPIC, you MUST output valid JSON ONLY.
-Do not wrap in markdown code blocks like \`\`\`json. Just raw JSON.
+Current Date: ${currentDate}
 
-REQUIRED JSON STRUCTURE FOR SCRIPTS/IDEAS:
-{
-  "videoTitle": "🚀 Hooky Title | Main Keyword",
-  "videoDescription": "Engaging description with CTA.",
-  "shortsHashtags": ["#shorts", "#topic"],
-  "tiktokText": "Viral caption",
-  "tiktokHashtags": ["#fyp", "#topic"],
-  "scenes": [
-    { "sceneNumber": 1, "visualDescription": "...", "narration": "...", "durationSeconds": 5 }
-  ]
-}
-
-If asking for MULTIPLE IDEAS, return an ARRAY of objects with this structure.
-If just chatting, reply normally in plain text.
+1. You MUST output VALID JSON ONLY.
+2. Do NOT use markdown code blocks (like \`\`\`json). Just raw JSON.
+3. Follow the schema and format rules defined in your System Instruction exactly.
+4. If generating a Weekly Schedule (Cronograma), calculate the dates starting from the NEXT Monday based on the Current Date.
 ═══════════════════════════════════════
 `;
 
