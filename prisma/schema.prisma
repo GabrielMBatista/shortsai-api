@@ -215,7 +215,7 @@ model Folder {
   channel    Channel?  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
   projects   Project[]
 
-  @@unique([user_id, name])
+  @@unique([user_id, name, parent_id])
   @@index([user_id])
   @@index([user_id, channel_id])
   @@map("folders")

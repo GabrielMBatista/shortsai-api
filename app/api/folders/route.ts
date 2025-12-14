@@ -81,23 +81,23 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const channelId = searchParams.get('channel_id');
 
+        const forceRefresh = searchParams.get('refresh') === 'true';
+
         // 🆕 Dynamic cache key based on filter
         const cacheKey = channelId
             ? `api:folders:${user_id}:channel:${channelId}`
             : `api:folders:${user_id}`;
 
-        const data = await cachedQuery(cacheKey, async () => {
-            // 🆕 Build where clause based on channel filter
+        let data;
+
+        if (forceRefresh) {
             const where: any = { user_id };
 
             if (channelId === 'null' || channelId === '') {
-                // Get only global folders (no channel)
                 where.channel_id = null;
             } else if (channelId) {
-                // Get folders for specific channel
                 where.channel_id = channelId;
             }
-            // If no channelId param, return ALL folders (current behavior)
 
             const folders = await prisma.folder.findMany({
                 where,
@@ -121,8 +121,49 @@ export async function GET(request: Request) {
                 }
             });
 
-            return { folders, rootCount };
-        }, 300); // 5 minutes cache
+            data = { folders, rootCount };
+
+            // Optionally update cache
+            // await redis.set(cacheKey, JSON.stringify(data), 'EX', 300);
+        } else {
+            data = await cachedQuery(cacheKey, async () => {
+                // 🆕 Build where clause based on channel filter
+                const where: any = { user_id };
+
+                if (channelId === 'null' || channelId === '') {
+                    // Get only global folders (no channel)
+                    where.channel_id = null;
+                } else if (channelId) {
+                    // Get folders for specific channel
+                    where.channel_id = channelId;
+                }
+                // If no channelId param, return ALL folders (current behavior)
+
+                const folders = await prisma.folder.findMany({
+                    where,
+                    orderBy: { name: 'asc' },
+                    include: {
+                        _count: {
+                            select: {
+                                projects: {
+                                    where: { is_archived: false }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                const rootCount = await prisma.project.count({
+                    where: {
+                        user_id,
+                        folder_id: null,
+                        is_archived: false
+                    }
+                });
+
+                return { folders, rootCount };
+            }, 300); // 5 minutes cache
+        }
 
         return NextResponse.json(data);
     } catch (error: any) {
