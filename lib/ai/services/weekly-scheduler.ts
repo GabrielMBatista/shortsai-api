@@ -65,55 +65,62 @@ export class WeeklyScheduler {
             throw new Error('Failed to generate schedule structure.');
         }
 
-        // --- STEP 2: EXPANSION (The "Worker" Phase) ---
-        // Iterate through days and generate scenes for each day independently.
-        console.log('[WeeklyScheduler] Step 2: Expanding Days...');
+        // --- STEP 2: EXPANSION (Batched Parallel Execution) ---
+        // To avoid Rate Limits (429) and timeouts, we process in batches of 3.
+        console.log('[WeeklyScheduler] Step 2: Expanding Days (Batched)...');
 
         const days = ['segunda_feira', 'terca_feira', 'quarta_feira', 'quinta_feira', 'sexta_feira', 'sabado', 'domingo'];
         const expandedSchedule: any = {};
+        const BATCH_SIZE = 3;
 
-        // We run sequentially to avoid Rate Limits (429) and keep quality high.
-        // Parallelizing is possible but riskier for stability.
-        for (const day of days) {
-            if (!blueprint.cronograma[day]) continue;
+        const expandDay = async (day: string) => {
+            if (!blueprint.cronograma[day]) return;
 
             const dayData = blueprint.cronograma[day];
-            console.log(`[WeeklyScheduler] Expanding ${day}: ${dayData.tema_dia}`);
+            console.log(`[WeeklyScheduler] Expanding ${day}...`);
 
             const expansionPrompt = `
-            CONTEXT:
-            Project: ${message}
-            Week Global Goal: ${blueprint.meta_global?.objetivo || 'N/A'}
-            
-            FOCUS DAY: ${day.toUpperCase()}
-            Theme: ${dayData.tema_dia}
-            
-            INPUT DATA (Titles & Hooks defined in Step 1):
-            ${JSON.stringify(dayData, null, 2)}
+             CONTEXT:
+             Project: ${message}
+             Week Global Goal: ${blueprint.meta_global?.objetivo || 'N/A'}
+             
+             FOCUS DAY: ${day.toUpperCase()}
+             Theme: ${dayData.tema_dia}
+             
+             INPUT DATA (Titles & Hooks defined in Step 1):
+             ${JSON.stringify(dayData, null, 2)}
+ 
+             TASK:
+             Generate the FULL SCRIPTS (scenes, visual, narration, duration) for the 3 videos.
+             
+             OUTPUT:
+             Return ONLY the valid JSON object for this day.
+             `;
 
-            TASK:
-            Generate the FULL SCRIPTS (scenes, visual, narration, duration) for the 3 videos of this day ("viral_1", "viral_2", "longo").
-            Follow the standard script format exactly.
-            
-            OUTPUT:
-            Return ONLY the valid JSON object for this specific day (do not wrap in "cronograma", just the day object).
-            Example:
-            {
-               "tema_dia": "...",
-               "viral_1": { "titulo": "...", "hook_falado": "...", "scenes": [...] },
-               ...
+            // Retry Logic (1 retry)
+            let attempts = 0;
+            while (attempts < 2) {
+                try {
+                    const dayResultStr = await this.callGemini(ai, isSystem, userId, expansionPrompt, persona.temperature);
+                    const dayResult = JSON.parse(this.cleanJson(dayResultStr));
+                    expandedSchedule[day] = dayResult;
+                    break; // Success
+                } catch (err) {
+                    attempts++;
+                    console.error(`Failed to expand ${day} (Attempt ${attempts}):`, err);
+                    if (attempts >= 2) {
+                        expandedSchedule[day] = dayData; // Final Fallback
+                    } else {
+                        await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
+                    }
+                }
             }
-            `;
+        };
 
-            try {
-                const dayResultStr = await this.callGemini(ai, isSystem, userId, expansionPrompt, persona.temperature);
-                const dayResult = JSON.parse(this.cleanJson(dayResultStr));
-                expandedSchedule[day] = dayResult;
-            } catch (err) {
-                console.error(`Failed to expand ${day}`, err);
-                // Fallback: keep original blueprint data (without scenes) so we don't crash
-                expandedSchedule[day] = dayData;
-            }
+        // Process in batches
+        for (let i = 0; i < days.length; i += BATCH_SIZE) {
+            const batch = days.slice(i, i + BATCH_SIZE);
+            await Promise.all(batch.map(day => expandDay(day)));
         }
 
         // --- STEP 3: ASSEMBLY ---
