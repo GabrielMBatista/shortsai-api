@@ -88,6 +88,7 @@ Current Date: ${currentDate}
 2. Do NOT use markdown code blocks (like \`\`\`json). Just raw JSON.
 3. Follow the schema and format rules defined in your System Instruction exactly.
 4. If generating a Weekly Schedule (Cronograma), calculate the dates starting from the NEXT Monday based on the Current Date.
+5. For Weekly Schedules, strictly format "id_da_semana" as: "(DD start)-(DD end)_(MMM)_(YY)" (e.g. "15-21_Dez_25").
 ═══════════════════════════════════════
 `;
 
