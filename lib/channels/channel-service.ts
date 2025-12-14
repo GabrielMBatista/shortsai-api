@@ -285,11 +285,11 @@ export class ChannelService {
             }
 
             // 2. Buscar vídeos da playlist
-            const maxResults = options?.maxResults || 20;
+            const maxResults = options?.maxResults || 50;
             const playlistResponse = await youtube.playlistItems.list({
                 part: ['snippet', 'contentDetails'],
                 playlistId: uploadsPlaylistId,
-                maxResults: Math.min(maxResults, 50) // YouTube API limit
+                maxResults: Math.min(maxResults, 50) // YouTube API limit per page
             });
 
             const videoIds = playlistResponse.data.items

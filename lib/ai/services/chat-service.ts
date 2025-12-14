@@ -35,35 +35,41 @@ export class ChatService {
                         take: 5,
                         select: { topic: true, generated_title: true }
                     }),
-                    ChannelService.getChannelVideos(channelId, { maxResults: 15, orderBy: 'viewCount' })
+                    // Fetch RECENT videos (default sort) to analyze current performance trends (both high and low)
+                    // Increased to 50 to get a better statistical sample as requested
+                    ChannelService.getChannelVideos(channelId, { maxResults: 50, orderBy: 'date' })
                 ]);
 
-                const formatViews = (views: number) => {
-                    if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M`;
-                    if (views >= 1000) return `${(views / 1000).toFixed(1)}K`;
-                    return views.toString();
+                const formatNum = (num: number) => {
+                    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+                    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+                    return num.toString();
                 };
 
-                const topVideos = youtubeVideos.slice(0, 5).map(v =>
-                    `- "${v.title}" (${formatViews(v.statistics.viewCount)} views)`
+                // Format: "Title" (Views: 10K | Likes: 500)
+                const videoList = youtubeVideos.map(v =>
+                    `- "${v.title}" (Views: ${formatNum(v.statistics.viewCount)} | Likes: ${formatNum(v.statistics.likeCount)})`
                 ).join('\n');
 
                 channelContext = `
 ═══════════════════════════════════════
-CHANNEL INTELLIGENCE & PERFORMANCE DATA
+CHANNEL CONTEXT & PERFORMANCE DATA
 ═══════════════════════════════════════
-Use this data to generate high-performing, viral content tailored to this channel's audience.
+Use this data to analyze performance trends and optimize your content.
 
-🔥 TOP PERFORMING VIDEOS (Do more of this style/topic):
-${topVideos || "No data available."}
+📊 RECENT VIDEO ANALYSIS (Last 50 Videos):
+${videoList || "No data available."}
 
-📅 RECENT PROJECTS (Avoid exact repetition, find new angles):
+📅 RECENT PROJECTS (Avoid exact repetition):
 ${recentProjects.map(p => `- ${p.generated_title || p.topic}`).join('\n') || "None recent."}
 
-STRATEGIC INSTRUCTIONS:
-1. Analyze why the top videos succeeded (audience interest, hook, topic).
-2. Suggest ideas that align with these winning patterns but offer a fresh perspective.
-3. AVOID repeating recently covered topics unless you have a distinct, novel angle.
+STRATEGIC INSTRUCTIONS (INTERNAL PROCESSING):
+1. Analyze the list above. Identify High-Performing vs Low-Performing outliers.
+2. Look for correlation between Titles/Topics and engagement (Views/Likes).
+3. APPLY insights to the generated JSON:
+   - Adopt successful Hook structures and Keywords.
+   - Avoid topics that consistently underperform.
+4. Do NOT output analysis text. Output VALID JSON ONLY.
 ═══════════════════════════════════════
 `;
             } catch (err) {
@@ -80,15 +86,16 @@ STRATEGIC INSTRUCTIONS:
 
         const jsonEnforcement = `
 ═══════════════════════════════════════
-OUTPUT FORMAT ENFORCEMENT
+OUTPUT FORMAT ENFORCEMENT (CRITICAL)
 ═══════════════════════════════════════
 Current Date: ${currentDate}
 
-1. You MUST output VALID JSON ONLY.
-2. Do NOT use markdown code blocks (like \`\`\`json). Just raw JSON.
-3. Follow the schema and format rules defined in your System Instruction exactly.
-4. If generating a Weekly Schedule (Cronograma), calculate the dates starting from the NEXT Monday based on the Current Date.
-5. For Weekly Schedules, strictly format "id_da_semana" as: "(DD start)-(DD end)_(MMM)_(YY)" (e.g. "15-21_Dez_25").
+1. OUTPUT VALID JSON ONLY. No markdown formatted code blocks.
+2. STRICTLY follow the schema defined in the System Instruction.
+3. DO NOT OMIT REQUIRED FIELDS (like 'scenes' arrays), even for shorter content.
+4. EVERY object in the 'cronograma' or 'scenes' list must be fully expanded.
+5. If generating a Weekly Schedule, calculate dates from the NEXT Monday.
+6. Format "id_da_semana" as: "(DD)-(DD)_(MMM)_(YY)" (e.g. "15-21_Dez_25").
 ═══════════════════════════════════════
 `;
 
