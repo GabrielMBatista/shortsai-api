@@ -46,30 +46,33 @@ export class ChatService {
                     return num.toString();
                 };
 
-                // Format: "Title" (Views: 10K | Likes: 500)
+                // Optimized format for maximum density: "Title (V:10k)"
+                // We send ALL 50 videos to allow the AI to find subtle patterns, but we strip unnecessary chars.
                 const videoList = youtubeVideos.map(v =>
-                    `- "${v.title}" (Views: ${formatNum(v.statistics.viewCount)} | Likes: ${formatNum(v.statistics.likeCount)})`
-                ).join('\n');
+                    `${v.title.substring(0, 50)} (V:${formatNum(v.statistics.viewCount)})`
+                ).join(' | ');
 
                 channelContext = `
 ═══════════════════════════════════════
-CHANNEL CONTEXT & PERFORMANCE DATA
+CHANNEL PERFORMANCE (Last 50 Videos)
 ═══════════════════════════════════════
-Use this data to analyze performance trends and optimize your content.
+Format: Title (V: Views). Ordered by date (Newest first).
+Use this full dataset to identify detailed trends, saturation points, and rising topics.
 
-📊 RECENT VIDEO ANALYSIS (Last 50 Videos):
-${videoList || "No data available."}
+DATA:
+${videoList}
 
-📅 RECENT PROJECTS (Avoid exact repetition):
+Stats Legend: V=Views, K=Thousands, M=Millions.
+
+📅 RECENT PROJECTS (Avoid Repetition):
 ${recentProjects.map(p => `- ${p.generated_title || p.topic}`).join('\n') || "None recent."}
 
-STRATEGIC INSTRUCTIONS (INTERNAL PROCESSING):
-1. Analyze the list above. Identify High-Performing vs Low-Performing outliers.
-2. Look for correlation between Titles/Topics and engagement (Views/Likes).
-3. APPLY insights to the generated JSON:
-   - Adopt successful Hook structures and Keywords.
-   - Avoid topics that consistently underperform.
-4. Do NOT output analysis text. Output VALID JSON ONLY.
+STRATEGIC INSTRUCTIONS:
+1. Scan the full list of 50 videos to detect the channel's current pulse.
+2. Identify topics that are becoming saturated (many recent videos with declining views).
+3. Identify outlier hits in the sea of average content.
+4. APPLY these full-history insights to maximize the virality of the new JSON output.
+5. Output valid JSON only.
 ═══════════════════════════════════════
 `;
             } catch (err) {
