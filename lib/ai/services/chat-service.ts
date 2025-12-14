@@ -71,12 +71,11 @@ STRATEGIC INSTRUCTIONS:
             }
         }
 
-        // 2. specialized handling for Weekly Schedules (Scalable Architecture)
-        const isWeeklyRequest =
-            (message.toLowerCase().includes('cronograma') && message.toLowerCase().includes('semana')) ||
-            (message.toLowerCase().includes('planejamento') && message.toLowerCase().includes('semanal'));
+        // 2. Intelligent Detection of Complex/Long-running Tasks
+        // Instead of hardcoding keywords, we analyze the semantic intent
+        const isComplexRequest = await this.detectComplexIntent(message);
 
-        if (isWeeklyRequest) {
+        if (isComplexRequest) {
             const { scheduleGenerationQueue } = await import('../../queues');
 
             // Enqueue Job
@@ -203,5 +202,41 @@ Current Date: ${currentDate}
                 console.error('[ChatService] Failed to track usage:', trackError);
             }
         }
+    }
+
+    /**
+     * Detects if a request is complex and should be processed asynchronously
+     * Uses semantic analysis instead of hardcoded keywords
+     */
+    private static async detectComplexIntent(message: string): Promise<boolean> {
+        const lowerMessage = message.toLowerCase();
+
+        // Pattern 1: Weekly/Monthly schedules in any language
+        const schedulePatterns = [
+            /\b(cronograma|planejamento|agenda|schedule|plan|calendar)\b.*\b(seman|week|mês|month)\b/i,
+            /\b(week|seman|mês|month).*\b(cronograma|planejamento|schedule|plan)\b/i,
+        ];
+
+        // Pattern 2: Multiple projects/videos requests
+        const bulkPatterns = [
+            /\b(\d+)\s*(vídeos?|videos?|projetos?|projects?|ideias?|ideas?)\b/i,
+            /\b(vários|múltiplos|diversos|many|multiple|several)\s*(vídeos?|videos?|projetos?|projects?)\b/i,
+        ];
+
+        // Pattern 3: Deep analysis requests
+        const analysisPatterns = [
+            /\b(anális[ei]|analysis|pesquis[ao]|research|estud[oa]|study)\s*(completa?|detalhada?|profunda?|deep|thorough|comprehensive)\b/i,
+            /\b(completa?|detalhada?|profunda?|deep|thorough)\s*(anális[ei]|analysis|pesquis[ao]|research)\b/i,
+        ];
+
+        // Check all patterns
+        const isSchedule = schedulePatterns.some(pattern => pattern.test(lowerMessage));
+        const isBulk = bulkPatterns.some(pattern => pattern.test(lowerMessage));
+        const isAnalysis = analysisPatterns.some(pattern => pattern.test(lowerMessage));
+
+        // Also check message length - very long messages likely need more processing
+        const isLongMessage = message.length > 500;
+
+        return isSchedule || isBulk || isAnalysis || isLongMessage;
     }
 }
