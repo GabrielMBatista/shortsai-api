@@ -75,7 +75,11 @@ STRATEGIC INSTRUCTIONS:
         // Instead of hardcoding keywords, we analyze the semantic intent
         const isComplexRequest = await this.detectComplexIntent(message);
 
+        console.log(`[ChatService] Message: "${message.substring(0, 100)}..."`);
+        console.log(`[ChatService] Complex request detected: ${isComplexRequest}`);
+
         if (isComplexRequest) {
+            console.log(`[ChatService] 🔄 Enqueuing job for async processing...`);
             const { scheduleGenerationQueue } = await import('../../queues');
 
             // Enqueue Job
@@ -86,14 +90,20 @@ STRATEGIC INSTRUCTIONS:
                 channelContext
             });
 
+            console.log(`[ChatService] ✅ Job enqueued with ID: ${job.id}`);
+            console.log(`[ChatService] Job data:`, { userId, personaId, messageLength: message.length });
+
             // Return Signal to Frontend
             // We return a string because the chat interface expects a "text" response for now.
             // The frontend will parse this invisible signal.
-            return JSON.stringify({
+            const response = JSON.stringify({
                 type: 'job_started',
                 jobId: job.id,
                 message: "Starting deep research task..."
             });
+
+            console.log(`[ChatService] Returning to frontend:`, response);
+            return response;
         }
 
         // 3. Load Persona (Standard Flow)

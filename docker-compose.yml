@@ -103,6 +103,34 @@ services:
     networks:
       - shortsai-network
 
+  # ==============================
+  # SCHEDULE WORKER (BullMQ Job Processor)
+  # ==============================
+  schedule-worker:
+    container_name: shortsai-schedule-worker
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      # Conexão com banco e redis (mesmas da API)
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-shortsai}
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    command: npm run worker:schedule
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      shortsai-api:
+        condition: service_started
+    networks:
+      - shortsai-network
+
 volumes:
   shortsai_data:
 
