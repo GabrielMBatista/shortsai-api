@@ -33,8 +33,8 @@ jobs:
             docker run --rm -v shortsai-api_shortsai_data:/data alpine chown -R 1001:1001 /data || true
             docker run --rm -v shortsai_data:/data alpine chown -R 1001:1001 /data || true
             
-            # Build and start ONLY API and DB (Worker is now on Google Cloud)
-            docker-compose up -d --build shortsai-api db
+            # Build and start ALL services: DB, Redis, API, and Schedule Worker
+            docker-compose up -d --build db redis shortsai-api schedule-worker
             
             # Wait for containers to initialize
             echo "⏳ Waiting for services to stabilize..."
@@ -51,11 +51,29 @@ jobs:
 
             # Wait for API to be ready
             
-            # Verify API is running
+            # Verify all critical services are running
+            if ! docker-compose ps db | grep -q "Up"; then
+              echo "ERROR: DB container failed to start!"
+              docker-compose logs db --tail=50
+              exit 1
+            fi
+            
+            if ! docker-compose ps redis | grep -q "Up"; then
+              echo "ERROR: Redis container failed to start!"
+              docker-compose logs redis --tail=50
+              exit 1
+            fi
+            
             if ! docker-compose ps shortsai-api | grep -q "Up"; then
               echo "ERROR: API container failed to start!"
               docker-compose logs shortsai-api --tail=100
               exit 1
+            fi
+            
+            if ! docker-compose ps schedule-worker | grep -q "Up"; then
+              echo "⚠️  WARNING: Schedule Worker failed to start!"
+              docker-compose logs schedule-worker --tail=50
+              # Don't fail deploy, but warn
             fi
             
             echo "✅ API deployed successfully"
