@@ -2,6 +2,7 @@ import { KeyManager } from '../core/key-manager';
 import { executeRequest } from '../core/executor';
 import { trackUsage } from '../core/usage-tracker';
 import { generateVideoScriptPrompt } from '../prompts/script-prompts';
+import { normalizeScriptFormat } from '../core/json-normalizer';
 import { prisma } from '@/lib/prisma';
 
 export class ScriptService {
@@ -225,23 +226,23 @@ VOCÊ ESTÁ USANDO A PERSONA: "${persona.name}"
                     const cleanText = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
                     const json = JSON.parse(cleanText);
 
-                    const normalizedScenes = (json.scenes || []).map((s: any, i: number) => ({
-                        sceneNumber: s.sceneNumber || s.scene_number || (i + 1),
-                        visualDescription: s.visualDescription || s.visual_description || "Pending description",
-                        narration: s.narration || "Pending narration",
-                        durationSeconds: s.durationSeconds || s.duration_seconds || 5
-                    }));
+                    // 🔥 Usar normalização flexível - aceita QUALQUER formato de persona
+                    console.log('[ScriptService] Normalizing JSON format automatically...');
+                    const normalized = normalizeScriptFormat(json, topic);
+
+                    console.log(`[ScriptService] ✅ Normalized successfully: ${normalized.scenes.length} scenes`);
 
                     return {
-                        videoTitle: json.videoTitle || json.title || topic,
-                        videoDescription: json.videoDescription || json.description || `Video about ${topic}`,
-                        shortsHashtags: json.shortsHashtags || [],
-                        tiktokText: json.tiktokText || "",
-                        tiktokHashtags: json.tiktokHashtags || [],
-                        scenes: normalizedScenes
+                        videoTitle: normalized.videoTitle,
+                        videoDescription: normalized.videoDescription,
+                        shortsHashtags: normalized.shortsHashtags,
+                        tiktokText: normalized.tiktokText,
+                        tiktokHashtags: normalized.tiktokHashtags,
+                        scenes: normalized.scenes,
+                        metadata: normalized.metadata // Preservar metadados originais
                     };
                 } catch (e) {
-                    console.error("JSON Parse Error", text);
+                    console.error("[ScriptService] JSON Parse Error:", text);
                     throw new Error("Failed to parse script format.");
                 }
             }, userId);

@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
   },
   output: 'standalone',
   poweredByHeader: false,
+
+  // 🔥 Fix 413 Error: Increase body size limit for image/character analysis
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '50mb' // Allow large image uploads
+    }
+  },
+
   async headers() {
     return [
       {
