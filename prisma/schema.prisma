@@ -42,6 +42,7 @@ model User {
   personaHistory          PersonaHistory[]
   personaUsageLogs        PersonaUsageLog[]
   personaChats            PersonaChat[]
+  youtubeImportBatches    YoutubeImportBatch[]
   plan                    Plan?            @relation(fields: [plan_id], references: [id])
 
   @@map("users")
@@ -553,6 +554,8 @@ model Persona {
   history            PersonaHistory[]
   usageLogs          PersonaUsageLog[]
   chats              PersonaChat[]
+  youtubeVideos      YoutubeVideo[]     @relation("YoutubeVideoPersona")
+  channelPersonaHistory ChannelPersonaHistory[] @relation("ChannelPersonaHistory")
   
   @@index([type, visibility, requiredPlan])
   @@index([ownerId])
@@ -585,6 +588,9 @@ model Channel {
   projects          Project[]
   analytics         ChannelAnalytics[]
   folders           Folder[]
+  youtubeVideos     YoutubeVideo[]
+  importBatches     YoutubeImportBatch[]
+  personaHistory    ChannelPersonaHistory[]
   
   @@unique([userId, youtubeChannelId])
   @@index([userId])
@@ -690,4 +696,125 @@ model PersonaChatMessage {
   
   @@index([chatId, createdAt])
   @@map("persona_chat_messages")
+}
+
+// ═══════════════════════════════════════════════
+// YOUTUBE ANALYTICS MODULE
+// ═══════════════════════════════════════════════
+
+model YoutubeVideo {
+  id              String   @id @default(uuid())
+  channelId       String   @map("channel_id")
+  youtubeVideoId  String   @unique @map("youtube_video_id")
+  titleSnapshot   String?  @map("title_snapshot")
+  durationSec     Int?     @map("duration_sec")
+  publishedAt     DateTime? @map("published_at")
+  
+  // Persona attribution (immutable after first assignment)
+  personaId       String?  @map("persona_id")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  channel         Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  persona         Persona? @relation("YoutubeVideoPersona", fields: [personaId], references: [id], onDelete: SetNull)
+  
+  metrics         YoutubeVideoMetrics[]
+  insights        YoutubeVideoInsight?
+  
+  @@index([channelId])
+  @@index([publishedAt])
+  @@index([personaId])
+  @@map("youtube_videos")
+}
+
+model YoutubeVideoMetrics {
+  id                   String   @id @default(uuid())
+  videoId              String   @map("video_id")
+  date                 DateTime
+  
+  // Basic metrics
+  views                Int?
+  watchTimeMinutes     Float?   @map("watch_time_minutes")
+  avgViewDurationSec   Float?   @map("avg_view_duration_sec")
+  
+  // Advanced metrics
+  impressions          Int?
+  impressionsCtr       Float?   @map("impressions_ctr")
+  likes                Int?
+  comments             Int?
+  
+  averageViewedPercent Float?   @map("average_viewed_percent")
+  trafficSource        String?  @map("traffic_source")
+  deviceType           String?  @map("device_type")
+  
+  // Import metadata
+  source               String   @default("MANUAL") // MANUAL | API
+  importBatchId        String?  @map("import_batch_id")
+  
+  createdAt            DateTime @default(now()) @map("created_at")
+  
+  video                YoutubeVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  importBatch          YoutubeImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  
+  @@unique([videoId, date, trafficSource, deviceType])
+  @@index([videoId, date])
+  @@index([importBatchId])
+  @@map("youtube_video_metrics")
+}
+
+model YoutubeVideoInsight {
+  id              String   @id @default(uuid())
+  videoId         String   @unique @map("video_id")
+  
+  hookScore       Float    @map("hook_score")
+  retentionScore  Float    @map("retention_score")
+  ctrScore        Float    @map("ctr_score")
+  contentScore    Float    @map("content_score")
+  growthPotential Float    @map("growth_potential")
+  
+  diagnosis       String   @db.Text
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  video           YoutubeVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  
+  @@map("youtube_video_insights")
+}
+
+model YoutubeImportBatch {
+  id              String   @id @default(uuid())
+  channelId       String   @map("channel_id")
+  filename        String
+  totalRows       Int      @map("total_rows")
+  importedRows    Int      @map("imported_rows")
+  skippedRows     Int      @map("skipped_rows")
+  errors          Json?
+  
+  importedAt      DateTime @default(now()) @map("imported_at")
+  importedBy      String   @map("imported_by")
+  
+  channel         Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [importedBy], references: [id], onDelete: Cascade)
+  metrics         YoutubeVideoMetrics[]
+  
+  @@index([channelId, importedAt])
+  @@map("youtube_import_batches")
+}
+
+model ChannelPersonaHistory {
+  id             String   @id @default(uuid())
+  channelId      String   @map("channel_id")
+  personaId      String   @map("persona_id")
+  activatedAt    DateTime @map("activated_at")
+  deactivatedAt  DateTime? @map("deactivated_at")
+  
+  channel        Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  persona        Persona  @relation("ChannelPersonaHistory", fields: [personaId], references: [id], onDelete: Cascade)
+  
+  @@index([channelId, activatedAt])
+  @@index([personaId])
+  @@map("channel_persona_history")
 }
