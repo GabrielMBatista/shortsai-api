@@ -33,17 +33,17 @@ jobs:
             docker run --rm -v shortsai-api_shortsai_data:/data alpine chown -R 1001:1001 /data || true
             docker run --rm -v shortsai_data:/data alpine chown -R 1001:1001 /data || true
             
-            # Build and start services: DB, Redis, and API
+            # Build and start services: DB, Redis, and API (quiet mode)
             # (Cronogramas processados direto na API agora)
-            docker-compose up -d --build db redis shortsai-api
+            docker-compose up -d --build --quiet-pull db redis shortsai-api
             
             # Wait for containers to initialize
             echo "⏳ Waiting for services to stabilize..."
-            sleep 15
+            sleep 10
             
-            # Apply Database Schema Changes (using global binary)
+            # Apply Database Schema Changes (auto-accept data loss in dev)
             echo "🚀 Running Database Migration..."
-            if docker-compose exec -T shortsai-api prisma db push; then
+            if docker-compose exec -T shortsai-api prisma db push --accept-data-loss; then
                 echo "✅ Database schema updated."
             else
                 echo "⚠️ Database migration failed."

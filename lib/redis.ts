@@ -19,7 +19,7 @@ const getUrlOptions = () => {
             username: url.username ? decodeURIComponent(url.username) : undefined,
         };
     } catch (e) {
-        console.warn('Invalid REDIS_URL:', e); 
+        console.warn('Invalid REDIS_URL:', e);
         return {};
     }
 };
@@ -31,9 +31,19 @@ const urlOptions = getUrlOptions();
 // but BullMQ manages its own connections if we pass connection options.
 // This is for general Redis usage if needed.
 
-export const redis = new Redis(getRedisUrl(), {
-    maxRetriesPerRequest: null, // Required by BullMQ
-});
+// During Next.js build, skip Redis connection to avoid connection errors in logs
+const shouldSkipRedis = process.env.SKIP_REDIS_CONNECTION === 'true' || process.env.NEXT_BUILD === 'true';
+
+export const redis = shouldSkipRedis
+    ? null as any // Mock Redis during build
+    : new Redis(getRedisUrl(), {
+        maxRetriesPerRequest: null, // Required by BullMQ
+        lazyConnect: true, // Only connect when actually needed
+        retryStrategy: (times) => {
+            if (times > 3) return null; // Stop retrying after 3 attempts
+            return Math.min(times * 200, 1000);
+        }
+    });
 
 export const connectionOptions = {
     host: process.env.REDIS_HOST || urlOptions.host || 'localhost',

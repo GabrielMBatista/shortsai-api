@@ -23,7 +23,9 @@ RUN npx prisma generate
 RUN mkdir -p public
 
 # Build the Next.js application
+# Skip Redis connection attempts during build to reduce log noise
 ENV NEXT_BUILD=true
+ENV SKIP_REDIS_CONNECTION=true
 RUN npm run build
 
 # Production image, copy all the files and run next
