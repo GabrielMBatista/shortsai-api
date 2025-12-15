@@ -4,13 +4,13 @@
  */
 
 import { Worker } from 'bullmq';
-import { connectionOptions } from './redis';
+import { connectionOptions } from '@/lib/redis';
 import {
     SOCIAL_POSTING_QUEUE_NAME,
     VIDEO_TRANSFER_QUEUE_NAME,
     SCHEDULE_GENERATION_QUEUE_NAME
-} from './queues';
-import { WeeklyScheduler } from './ai/services/weekly-scheduler';
+} from '@/lib/queues';
+import { WeeklyScheduler } from '@/lib/ai/services/weekly-scheduler';
 
 // Only initialize workers in server environment (not during build)
 if (typeof window === 'undefined' && process.env.NEXT_BUILD !== 'true') {
