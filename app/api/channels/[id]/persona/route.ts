@@ -4,13 +4,14 @@ import { prisma } from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
-import { UnauthorizedError, NotFoundError, ForbiddenError } from '@/lib/errors';
+import { UnauthorizedError, NotFoundError, ForbiddenError, BadRequestError } from '@/lib/errors';
 import { validateRequest } from '@/lib/validation';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
-const updatePersonaSchema = z.object({
+// Schema inline (temporário - deveria estar em channel.schema.ts)
+const updateChannelPersonaSchema = z.object({
     personaId: z.string().uuid()
 });
 
@@ -31,15 +32,15 @@ export async function PATCH(
 
         const reqLogger = createRequestLogger(requestId, session.user.id);
         const { id } = await params;
-        const { personaId } = await validateRequest(request, updatePersonaSchema);
+
+        const body = await validateRequest(request, updateChannelPersonaSchema);
+        const { personaId } = body;
 
         reqLogger.info({ channelId: id, personaId }, 'Updating channel persona');
 
         const channel = await prisma.channel.findUnique({ where: { id } });
         if (!channel) throw new NotFoundError('Channel', id);
-        if (channel.userId !== session.user.id) {
-            throw new ForbiddenError('Access denied');
-        }
+        if (channel.userId !== session.user.id) throw new ForbiddenError('Access denied');
 
         const updated = await prisma.channel.update({
             where: { id },

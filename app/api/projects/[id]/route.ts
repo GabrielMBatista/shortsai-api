@@ -7,7 +7,8 @@ import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { UnauthorizedError, NotFoundError, ForbiddenError } from '@/lib/errors';
 import { validateRequest } from '@/lib/validation';
-import { updateProjectSchema } from '@/lib/schemas';
+// Import direto do arquivo específico
+import { updateProjectSchema } from '@/lib/schemas/project.schema';
 
 export const dynamic = 'force-dynamic';
 

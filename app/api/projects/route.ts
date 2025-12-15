@@ -8,7 +8,8 @@ import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { UnauthorizedError, NotFoundError, RateLimitError } from '@/lib/errors';
 import { validateRequest } from '@/lib/validation';
-import { createProjectSchema } from '@/lib/schemas';
+// Import direto do arquivo específico
+import { createProjectSchema } from '@/lib/schemas/project.schema';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,14 +30,14 @@ export async function POST(request: NextRequest) {
         const reqLogger = createRequestLogger(requestId, session.user.id);
         reqLogger.info('Creating new project');
 
-        const body = await validateRequest(request, createProjectSchema);
+        const body = await validateRequest(request, createProjectSchema) as any;
         const {
             topic, style, language, voice_name, tts_provider, reference_image_url,
             characterIds, include_music, bg_music_prompt, duration_config, folder_id,
             generated_title, generated_description, generated_shorts_hashtags,
             generated_tiktok_text, generated_tiktok_hashtags, script_metadata,
             channel_id, persona_id,
-        } = body as any;
+        } = body;
 
         const user_id = session.user.id;
 

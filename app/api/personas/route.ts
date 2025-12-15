@@ -4,9 +4,10 @@ import { auth } from '@/lib/auth';
 import { PersonaService } from '@/lib/personas/persona-service';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
-import { UnauthorizedError, ForbiddenError } from '@/lib/errors';
+import { UnauthorizedError, ForbiddenError, BadRequestError } from '@/lib/errors';
 import { validateRequest } from '@/lib/validation';
-import { createPersonaSchema } from '@/lib/schemas';
+// Import direto do arquivo específico
+import { createPersonaSchema } from '@/lib/schemas/persona.schema';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,14 +59,13 @@ export async function POST(request: NextRequest) {
         reqLogger.info('Creating custom persona');
 
         const body = await validateRequest(request, createPersonaSchema);
-        const { name, description, category, system_prompt, is_active } = body as any;
+        const { name, description, category, system_prompt } = body;
 
         const persona = await PersonaService.createCustomPersona(session.user.id, {
             name,
             description,
             category,
-            systemInstruction: system_prompt,
-            is_active
+            systemInstruction: system_prompt || ''  // Safe fallback
         });
 
         const duration = Date.now() - startTime;

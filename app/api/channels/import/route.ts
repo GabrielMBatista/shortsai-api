@@ -4,12 +4,13 @@ import { prisma } from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
-import { UnauthorizedError } from '@/lib/errors';
+import { UnauthorizedError, BadRequestError } from '@/lib/errors';
 import { validateRequest } from '@/lib/validation';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
+// Schema inline (temporário - deveria estar em channel.schema.ts)
 const importChannelSchema = z.object({
     youtubeChannelId: z.string().min(1),
     googleAccountId: z.string(),
@@ -32,10 +33,8 @@ export async function POST(request: NextRequest) {
         const reqLogger = createRequestLogger(requestId, session.user.id);
         reqLogger.info('Importing YouTube channel');
 
-        const { youtubeChannelId, googleAccountId, name, description } = await validateRequest(
-            request,
-            importChannelSchema
-        );
+        const body = await validateRequest(request, importChannelSchema);
+        const { youtubeChannelId, googleAccountId, name, description } = body;
 
         const channel = await prisma.channel.upsert({
             where: {
