@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "cross-env AUTH_URL=http://localhost:3333/api/auth next dev -p 3333",
-    "build": "next build",
+    "build": "cross-env NODE_OPTIONS='--max-old-space-size=4096' next build",
     "start": "next start",
     "lint": "eslint",
     "db:seed": "tsx prisma/seed.ts",
