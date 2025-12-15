@@ -5,20 +5,14 @@ import { auth } from '@/lib/auth';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { UnauthorizedError, NotFoundError, ForbiddenError } from '@/lib/errors';
-import { validateRequest } from '@/lib/validation';
-import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
-const updatePersonaSchema = z.object({
-    personaId: z.string().uuid()
-});
-
 /**
- * PATCH /api/channels/[id]/persona
- * Update channel's active persona
+ * GET /api/channels/[id]
+ * Get channel details by ID
  */
-export async function PATCH(
+export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
@@ -31,26 +25,40 @@ export async function PATCH(
 
         const reqLogger = createRequestLogger(requestId, session.user.id);
         const { id } = await params;
-        const { personaId } = await validateRequest(request, updatePersonaSchema);
 
-        reqLogger.info({ channelId: id, personaId }, 'Updating channel persona');
+        reqLogger.debug({ channelId: id }, 'Fetching channel details');
 
-        const channel = await prisma.channel.findUnique({ where: { id } });
-        if (!channel) throw new NotFoundError('Channel', id);
-        if (channel.user_id !== session.user.id) {
-            throw new ForbiddenError('Access denied');
-        }
-
-        const updated = await prisma.channel.update({
+        const channel = await prisma.channel.findUnique({
             where: { id },
-            data: { personaId },
-            include: { persona: true }
+            include: {
+                persona: {
+                    select: {
+                        id: true,
+                        name: true,
+                        category: true,
+                        type: true,
+                        version: true
+                    }
+                },
+                persona_history: {
+                    orderBy: { switched_at: 'desc' },
+                    take: 10
+                }
+            }
         });
 
-        const duration = Date.now() - startTime;
-        reqLogger.info({ channelId: id, duration }, `Persona updated in ${duration}ms`);
+        if (!channel) throw new NotFoundError('Channel', id);
+        if (channel.user_id !== session.user.id) {
+            throw new ForbiddenError('You do not have access to this channel');
+        }
 
-        return NextResponse.json(updated, {
+        const duration = Date.now() - startTime;
+        reqLogger.info(
+            { channelId: id, duration },
+            `Channel retrieved in ${duration}ms`
+        );
+
+        return NextResponse.json(channel, {
             headers: { 'X-Request-ID': requestId }
         });
     } catch (error) {

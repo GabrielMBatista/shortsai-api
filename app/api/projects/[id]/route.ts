@@ -1,24 +1,44 @@
 import { prisma } from '@/lib/prisma';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { auth } from '@/lib/auth';
+import { createRequestLogger } from '@/lib/logger';
+import { handleError } from '@/lib/middleware/error-handler';
+import { UnauthorizedError, NotFoundError, ForbiddenError } from '@/lib/errors';
+import { validateRequest } from '@/lib/validation';
 import { updateProjectSchema } from '@/lib/schemas';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * GET /api/projects/[id]
+ * Retrieve a single project with all its scenes and characters
+ * 
+ * @param request - Next.js request object
+ * @param params - Route parameters (project ID)
+ * @returns JSON response with project data
+ */
 export async function GET(
-    request: Request,
+    request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
+    const requestId = request.headers.get('x-request-id') || randomUUID();
+    const startTime = Date.now();
+
     try {
         const session = await auth();
         if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            throw new UnauthorizedError();
         }
 
-        const { id } = await params;
+        const reqLogger = createRequestLogger(requestId, session.user.id);
+        const { id: projectId } = await params;
+
+        reqLogger.debug({ projectId }, 'Fetching project details');
+
         const project = await prisma.project.findUnique({
-            where: { id },
+            where: { id: projectId },
             select: {
                 id: true,
                 user_id: true,
@@ -99,11 +119,11 @@ export async function GET(
         });
 
         if (!project) {
-            return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+            throw new NotFoundError('Project', projectId);
         }
 
         if (project.user_id !== session.user.id) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            throw new ForbiddenError('You do not have access to this project');
         }
 
         const mappedProject = {
@@ -112,61 +132,79 @@ export async function GET(
             characters: project.ProjectCharacters.map(pc => pc.characters)
         };
 
-        return NextResponse.json(mappedProject);
-    } catch (error: any) {
-        console.error('Error fetching project:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        const duration = Date.now() - startTime;
+        reqLogger.info(
+            {
+                projectId,
+                sceneCount: project.scenes.length,
+                duration
+            },
+            `Project retrieved successfully in ${duration}ms`
+        );
+
+        return NextResponse.json(mappedProject, {
+            headers: { 'X-Request-ID': requestId },
+        });
+    } catch (error) {
+        return handleError(error, requestId);
     }
 }
 
+/**
+ * PATCH /api/projects/[id]
+ * Update an existing project and its relations
+ * 
+ * @param request - Next.js request object
+ * @param params - Route parameters (project ID)
+ * @returns JSON response with updated project data
+ */
 export async function PATCH(
-    request: Request,
+    request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
+    const requestId = request.headers.get('x-request-id') || randomUUID();
+    const startTime = Date.now();
+
     try {
         const session = await auth();
         if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            throw new UnauthorizedError();
         }
 
-        const { id } = await params;
-        const body = await request.json();
+        const reqLogger = createRequestLogger(requestId, session.user.id);
+        const { id: projectId } = await params;
 
-        // Validate input
-        const validation = updateProjectSchema.safeParse(body);
-        if (!validation.success) {
-            return NextResponse.json({
-                error: 'Validation Error',
-                details: validation.error.format()
-            }, { status: 400 });
-        }
+        reqLogger.info({ projectId }, 'Updating project');
+
+        // Validate request body
+        const body = await validateRequest(request, updateProjectSchema);
 
         // Check if project exists and belongs to user
         const existingProject = await prisma.project.findUnique({
-            where: { id },
+            where: { id: projectId },
             select: { user_id: true }
         });
 
         if (!existingProject) {
-            return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+            throw new NotFoundError('Project', projectId);
         }
 
         if (existingProject.user_id !== session.user.id) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            throw new ForbiddenError('You do not have access to this project');
         }
 
-        // Extract characterIds to handle relation update separately if needed
-        const { characterIds, ...rest } = validation.data;
+        // Extract characterIds to handle relation update separately
+        const { characterIds, ...rest } = body as any;
 
         const updateData: any = { ...rest };
 
-        // Transaction handling for character updates if needed, since explicit relation requires separate Ops
-        // But prisma update 'data' handles nested writes? 
-        // For explicit Many-to-Many, we can use `deleteMany` then `create` or `set` isn't available directly on the explicit model wrapper usually in the same way.
-        // Actually, with explicit M-N, we might need a transaction: Delete old links, Create new links.
-        // Or using `ProjectCharacters: { deleteMany: {}, create: ... }`.
-
+        // Handle character relations for explicit many-to-many
         if (characterIds && Array.isArray(characterIds)) {
+            reqLogger.debug(
+                { characterCount: characterIds.length },
+                'Updating project characters'
+            );
+
             updateData.ProjectCharacters = {
                 deleteMany: {}, // Remove all existing
                 create: characterIds.map((charId: string) => ({
@@ -176,7 +214,7 @@ export async function PATCH(
         }
 
         const project = await prisma.project.update({
-            where: { id },
+            where: { id: projectId },
             data: updateData,
             include: {
                 ProjectCharacters: { include: { characters: true } },
@@ -188,8 +226,9 @@ export async function PATCH(
             }
         });
 
-        // Invalidate fetching folders cache if folder_id OR is_archived changed
+        // Invalidate cache if folder or archive status changed
         if (updateData.folder_id !== undefined || updateData.is_archived !== undefined) {
+            reqLogger.debug('Invalidating folders cache');
             const { invalidateCache } = await import('@/lib/redis');
             await invalidateCache(`api:folders:${session.user.id}`);
         }
@@ -200,28 +239,49 @@ export async function PATCH(
             characters: project.ProjectCharacters.map(pc => pc.characters)
         };
 
-        return NextResponse.json(mappedProject);
-    } catch (error: any) {
-        console.error('Error updating project:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        const duration = Date.now() - startTime;
+        reqLogger.info(
+            { projectId, duration },
+            `Project updated successfully in ${duration}ms`
+        );
+
+        return NextResponse.json(mappedProject, {
+            headers: { 'X-Request-ID': requestId },
+        });
+    } catch (error) {
+        return handleError(error, requestId);
     }
 }
 
+/**
+ * DELETE /api/projects/[id]
+ * Delete a project and all its associated assets from storage
+ * 
+ * @param request - Next.js request object
+ * @param params - Route parameters (project ID)
+ * @returns JSON response confirming deletion
+ */
 export async function DELETE(
-    request: Request,
+    request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
+    const requestId = request.headers.get('x-request-id') || randomUUID();
+    const startTime = Date.now();
+
     try {
         const session = await auth();
         if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            throw new UnauthorizedError();
         }
 
-        const { id } = await params;
+        const reqLogger = createRequestLogger(requestId, session.user.id);
+        const { id: projectId } = await params;
+
+        reqLogger.info({ projectId }, 'Deleting project');
 
         // Fetch project with scenes to get all asset URLs
         const existingProject = await prisma.project.findUnique({
-            where: { id },
+            where: { id: projectId },
             select: {
                 user_id: true,
                 bg_music_url: true,
@@ -238,41 +298,64 @@ export async function DELETE(
         });
 
         if (!existingProject) {
-            return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+            throw new NotFoundError('Project', projectId);
         }
 
         if (existingProject.user_id !== session.user.id) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            throw new ForbiddenError('You do not have access to this project');
         }
+
+        reqLogger.debug(
+            { sceneCount: existingProject.scenes.length },
+            'Deleting project assets from storage'
+        );
 
         // Delete all assets from R2
         const { deleteFromR2 } = await import('@/lib/storage');
 
         // Delete scene assets
+        const assetDeletions = [];
         for (const scene of existingProject.scenes) {
-            await Promise.all([
+            assetDeletions.push(
                 deleteFromR2(scene.image_url),
                 deleteFromR2(scene.audio_url),
                 deleteFromR2(scene.video_url),
-                deleteFromR2(scene.sfx_url),
-            ]);
+                deleteFromR2(scene.sfx_url)
+            );
         }
 
         // Delete background music
-        await deleteFromR2(existingProject.bg_music_url);
+        assetDeletions.push(deleteFromR2(existingProject.bg_music_url));
+
+        // Execute all deletions in parallel
+        await Promise.all(assetDeletions);
+
+        reqLogger.debug('Assets deleted, removing from database');
 
         // Now delete from database
         await prisma.project.delete({
-            where: { id },
+            where: { id: projectId },
         });
 
-        // Invalidate folders cache as deleting a project changes counts
+        // Invalidate folders cache
         const { invalidateCache } = await import('@/lib/redis');
         await invalidateCache(`api:folders:${session.user.id}`);
 
-        return NextResponse.json({ success: true });
-    } catch (error: any) {
-        console.error('Error deleting project:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        const duration = Date.now() - startTime;
+        reqLogger.info(
+            {
+                projectId,
+                assetsDeleted: assetDeletions.length,
+                duration
+            },
+            `Project deleted successfully in ${duration}ms`
+        );
+
+        return NextResponse.json(
+            { success: true },
+            { headers: { 'X-Request-ID': requestId } }
+        );
+    } catch (error) {
+        return handleError(error, requestId);
     }
 }

@@ -1,17 +1,34 @@
 import { prisma } from '@/lib/prisma';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { auth } from '@/lib/auth';
 import { google } from 'googleapis';
 import { getGoogleAuth } from '@/lib/services/google-drive';
+import { createRequestLogger } from '@/lib/logger';
+import { handleError } from '@/lib/middleware/error-handler';
+import { UnauthorizedError, ExternalApiError } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
+/**
+ * GET /api/channels
+ * Retrieve all YouTube channels for the authenticated user across all connected Google accounts
+ * 
+ * @param request - Next.js request object
+ * @returns JSON response with array of channels
+ */
+export async function GET(request: NextRequest) {
+    const requestId = request.headers.get('x-request-id') || randomUUID();
+    const startTime = Date.now();
+
     try {
         const session = await auth();
         if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            throw new UnauthorizedError();
         }
+
+        const reqLogger = createRequestLogger(requestId, session.user.id);
+        reqLogger.info('Fetching user channels from connected Google accounts');
 
         const user_id = session.user.id;
 
@@ -22,10 +39,19 @@ export async function GET(request: Request) {
             }
         });
 
+        reqLogger.debug(
+            { accountCount: accounts.length },
+            'Found connected Google accounts'
+        );
+
         const channelsPromises = accounts.map(async (acc) => {
             try {
-                // Initialize Auth Manually for this specific account
+                // Initialize Auth for this specific account
                 if (!acc.refresh_token) {
+                    reqLogger.warn(
+                        { accountId: acc.id },
+                        'Account missing refresh token'
+                    );
                     throw new Error('Missing refresh token');
                 }
 
@@ -37,59 +63,77 @@ export async function GET(request: Request) {
 
                 authClient.setCredentials({
                     refresh_token: acc.refresh_token,
-                    access_token: acc.access_token || undefined // optional
+                    access_token: acc.access_token || undefined
                 });
 
                 const youtube = google.youtube({ version: 'v3', auth: authClient });
                 const oauth2 = google.oauth2({ version: 'v2', auth: authClient });
 
-                // Run fetch operations in parallel for speed
+                // Fetch channel data and user info in parallel
                 const [channelsResponse, userResponse] = await Promise.all([
-                    youtube.channels.list({ part: ['snippet', 'contentDetails', 'statistics'], mine: true }),
-                    oauth2.userinfo.get().catch(() => ({ data: { email: undefined } })) // robust fallback
+                    youtube.channels.list({
+                        part: ['snippet', 'contentDetails', 'statistics'],
+                        mine: true
+                    }),
+                    oauth2.userinfo.get().catch(() => ({ data: { email: undefined } }))
                 ]);
 
                 const items = channelsResponse.data.items || [];
                 const accountEmail = userResponse.data.email;
 
+                reqLogger.debug(
+                    { accountId: acc.id, channelCount: items.length },
+                    'Successfully fetched channels for account'
+                );
+
                 // Return all channels found for this account
                 return items.map(item => ({
-                    id: item.id, // YouTube Channel ID
-                    accountId: acc.id, // Internal Account ID
+                    id: item.id,
+                    accountId: acc.id,
                     name: item.snippet?.title || 'Unknown Channel',
-                    email: accountEmail, // Added email identification
+                    email: accountEmail,
                     thumbnail: item.snippet?.thumbnails?.default?.url,
                     statistics: item.statistics,
-                    provider: 'youtube', // explicit for UI
+                    provider: 'youtube',
                     lastSync: acc.updatedAt,
-                    status: 'active' // If API call worked, it's active
+                    status: 'active'
                 }));
 
             } catch (err: any) {
-                console.error(`Failed to fetch channels for account ${acc.id}:`, err);
+                reqLogger.warn(
+                    {
+                        accountId: acc.id,
+                        error: err.message,
+                        code: err.code
+                    },
+                    'Failed to fetch channels for account'
+                );
+
                 const errorMessage = err?.message || 'Unknown Error';
+                let friendlyName = 'Google Account (Error)';
 
-                let friendlyName = `Google Account (Error)`;
-
-                if (errorMessage.includes('insufficient authentication scopes') || errorMessage.includes('403')) {
-                    friendlyName = "Google Account (Needs Permissions)";
-                } else if (errorMessage.includes('YouTube Data API v3 has not been used') || errorMessage.includes('accessNotConfigured')) {
-                    friendlyName = "YouTube API Disabled";
+                // Categorize errors for better UX
+                if (errorMessage.includes('insufficient authentication scopes') ||
+                    errorMessage.includes('403')) {
+                    friendlyName = 'Google Account (Needs Permissions)';
+                } else if (errorMessage.includes('YouTube Data API v3 has not been used') ||
+                    errorMessage.includes('accessNotConfigured')) {
+                    friendlyName = 'YouTube API Disabled';
                 } else if (errorMessage.includes('Missing refresh token')) {
-                    friendlyName = "Reconnect Required";
+                    friendlyName = 'Reconnect Required';
                 } else {
-                    // Truncate generic error if too long
                     friendlyName = `Google Account (${errorMessage.substring(0, 30)}...)`;
                 }
 
-                // Return a fallback if API fails but account exists
+                // Return fallback channel representation
                 return [{
                     id: acc.providerAccountId,
                     accountId: acc.id,
                     name: friendlyName,
                     provider: 'google',
                     lastSync: acc.updatedAt,
-                    status: 'error'
+                    status: 'error',
+                    errorMessage: errorMessage
                 }];
             }
         });
@@ -97,9 +141,21 @@ export async function GET(request: Request) {
         const channelsNested = await Promise.all(channelsPromises);
         const channels = channelsNested.flat();
 
-        return NextResponse.json(channels);
-    } catch (error: any) {
-        console.error('Error fetching channels:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        const duration = Date.now() - startTime;
+        reqLogger.info(
+            {
+                totalChannels: channels.length,
+                activeChannels: channels.filter(c => c.status === 'active').length,
+                errorChannels: channels.filter(c => c.status === 'error').length,
+                duration
+            },
+            `Channels fetched successfully in ${duration}ms`
+        );
+
+        return NextResponse.json(channels, {
+            headers: { 'X-Request-ID': requestId },
+        });
+    } catch (error) {
+        return handleError(error, requestId);
     }
 }

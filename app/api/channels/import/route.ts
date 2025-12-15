@@ -1,41 +1,61 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { auth } from '@/lib/auth';
-import { ChannelService } from '@/lib/channels/channel-service';
+import { createRequestLogger } from '@/lib/logger';
+import { handleError } from '@/lib/middleware/error-handler';
+import { UnauthorizedError } from '@/lib/errors';
+import { validateRequest } from '@/lib/validation';
+import { z } from 'zod';
+import { ChannelService } from '@/lib/services/channel-service';
 
 export const dynamic = 'force-dynamic';
 
+const importChannelSchema = z.object({
+    youtubeChannelId: z.string().min(1),
+    accountId: z.string().uuid().optional()
+});
+
 /**
  * POST /api/channels/import
- * Importa um canal YouTube para o banco
+ * Import a YouTube channel
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+    const requestId = request.headers.get('x-request-id') || randomUUID();
+    const startTime = Date.now();
+
     try {
         const session = await auth();
-        if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        if (!session?.user?.id) throw new UnauthorizedError();
 
-        const { accountId, youtubeChannelId } = await request.json();
+        const reqLogger = createRequestLogger(requestId, session.user.id);
+        reqLogger.info('Importing YouTube channel');
 
-        if (!accountId || !youtubeChannelId) {
-            return NextResponse.json(
-                { error: 'accountId and youtubeChannelId are required' },
-                { status: 400 }
-            );
-        }
+        const { youtubeChannelId, accountId } = await validateRequest(
+            request,
+            importChannelSchema
+        );
 
         const channel = await ChannelService.importChannel(
             session.user.id,
-            accountId,
-            youtubeChannelId
+            youtubeChannelId,
+            accountId
         );
 
-        return NextResponse.json(channel, { status: 201 });
-    } catch (error: any) {
-        console.error('[POST /api/channels/import] Error:', error);
-        return NextResponse.json(
-            { error: error.message || 'Failed to import channel' },
-            { status: 500 }
+        const duration = Date.now() - startTime;
+        reqLogger.info(
+            {
+                channelId: channel.id,
+                youtubeChannelId,
+                duration
+            },
+            `Channel imported in ${duration}ms`
         );
+
+        return NextResponse.json(channel, {
+            status: 201,
+            headers: { 'X-Request-ID': requestId }
+        });
+    } catch (error) {
+        return handleError(error, requestId);
     }
 }

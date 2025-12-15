@@ -1,79 +1,87 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { auth } from '@/lib/auth';
 import { PersonaService } from '@/lib/personas/persona-service';
+import { createRequestLogger } from '@/lib/logger';
+import { handleError } from '@/lib/middleware/error-handler';
+import { UnauthorizedError, ForbiddenError } from '@/lib/errors';
+import { validateRequest } from '@/lib/validation';
+import { createPersonaSchema } from '@/lib/schemas';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/personas
- * Lista personas disponíveis para o usuário
+ * List available personas for the authenticated user
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+    const requestId = request.headers.get('x-request-id') || randomUUID();
+    const startTime = Date.now();
+
     try {
         const session = await auth();
-        if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        if (!session?.user?.id) throw new UnauthorizedError();
+
+        const reqLogger = createRequestLogger(requestId, session.user.id);
+        reqLogger.info('Fetching available personas');
 
         const personas = await PersonaService.getAvailablePersonas(session.user.id);
 
-        return NextResponse.json({
-            personas,
-            total: personas.length
-        });
-    } catch (error: any) {
-        console.error('[GET /api/personas] Error:', error);
-        return NextResponse.json(
-            { error: error.message || 'Internal Server Error' },
-            { status: 500 }
+        const duration = Date.now() - startTime;
+        reqLogger.info(
+            { personaCount: personas.length, duration },
+            `Personas retrieved in ${duration}ms`
         );
+
+        return NextResponse.json(
+            { personas, total: personas.length },
+            { headers: { 'X-Request-ID': requestId } }
+        );
+    } catch (error) {
+        return handleError(error, requestId);
     }
 }
 
 /**
  * POST /api/personas
- * Cria uma persona CUSTOM
+ * Create a custom persona
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+    const requestId = request.headers.get('x-request-id') || randomUUID();
+    const startTime = Date.now();
+
     try {
         const session = await auth();
-        if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        if (!session?.user?.id) throw new UnauthorizedError();
 
-        const body = await request.json();
-        const { name, description, category, systemInstruction, temperature, topP, topK, maxOutputTokens, tags } = body;
+        const reqLogger = createRequestLogger(requestId, session.user.id);
+        reqLogger.info('Creating custom persona');
 
-        if (!name || !systemInstruction) {
-            return NextResponse.json(
-                { error: 'Name and systemInstruction are required' },
-                { status: 400 }
-            );
-        }
+        const body = await validateRequest(request, createPersonaSchema);
+        const { name, description, category, system_prompt, is_active } = body as any;
 
         const persona = await PersonaService.createCustomPersona(session.user.id, {
             name,
             description,
             category,
-            systemInstruction,
-            temperature,
-            topP,
-            topK,
-            maxOutputTokens,
-            tags
+            systemInstruction: system_prompt,
+            is_active
         });
 
-        return NextResponse.json(persona, { status: 201 });
-    } catch (error: any) {
-        console.error('[POST /api/personas] Error:', error);
-
-        if (error.message.includes('Limite')) {
-            return NextResponse.json({ error: error.message }, { status: 403 });
-        }
-
-        return NextResponse.json(
-            { error: error.message || 'Internal Server Error' },
-            { status: 500 }
+        const duration = Date.now() - startTime;
+        reqLogger.info(
+            { personaId: persona.id, name, duration },
+            `Persona created in ${duration}ms`
         );
+
+        return NextResponse.json(persona, {
+            status: 201,
+            headers: { 'X-Request-ID': requestId }
+        });
+    } catch (error: any) {
+        if (error.message?.includes('Limite')) {
+            return handleError(new ForbiddenError(error.message), requestId);
+        }
+        return handleError(error, requestId);
     }
 }
