@@ -35,7 +35,9 @@ export async function GET(request: NextRequest) {
         const accounts = await prisma.account.findMany({
             where: {
                 userId: user_id,
-                provider: 'google'
+                provider: {
+                    in: ['google', 'google-channels']
+                }
             }
         });
 

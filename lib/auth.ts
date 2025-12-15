@@ -25,6 +25,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             clientSecret: process.env.GOOGLE_CLIENT_SECRET,
             authorization: {
                 params: {
+                    scope: "openid email profile",
+                    access_type: "offline",
+                    prompt: "consent select_account",
+                }
+            }
+        }),
+        Google({
+            id: "google-channels",
+            name: "YouTube",
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            authorization: {
+                params: {
                     scope: "openid email profile https://www.googleapis.com/auth/youtube.readonly",
                     access_type: "offline",
                     prompt: "consent select_account",
@@ -45,12 +58,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         async signIn({ user, account, profile }) {
             // Explicitly update the account tokens in the database if they are provided.
             // This fixes issues where re-connecting doesn't automatically update the refresh_token in some Prisma Adapter versions.
-            if (account?.provider === "google" && account.refresh_token) {
+            const isGoogle = account?.provider === "google" || account?.provider === "google-channels";
+
+            if (isGoogle && account?.refresh_token) {
                 try {
                     await prisma.account.update({
                         where: {
                             provider_providerAccountId: {
-                                provider: "google",
+                                provider: account.provider,
                                 providerAccountId: account.providerAccountId
                             }
                         },
@@ -63,7 +78,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                             updatedAt: new Date(),
                         }
                     });
-                    console.log("Auth: Manually updated Google account tokens for providerAccountId:", account.providerAccountId);
+                    console.log(`Auth: Manually updated ${account.provider} tokens for providerAccountId:`, account.providerAccountId);
                 } catch (error) {
                     // Account might not exist yet (first sign in), which is fine, the adapter will create it.
                     console.log("Auth: Skipping manual update (account might be new or not found)", error);
