@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { scheduleGenerationQueue } from '@/lib/queues';
+import { scheduleQueue } from '@/lib/queues/schedule-queue';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,15 +21,20 @@ export async function GET(
         const { jobId } = await params;
 
         // Get the job from BullMQ
-        const job = await scheduleGenerationQueue.getJob(jobId);
+        const job = await scheduleQueue.getJob(jobId);
 
         if (!job) {
             return NextResponse.json({ error: 'Job not found' }, { status: 404 });
         }
 
-        // Get job state and progress
+        // Verify job belongs to user
+        if (job.data.userId !== session.user.id) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+        }
+
+        // Get job state
         const state = await job.getState();
-        const progress = job.progress;
+        const progress = job.progress || 0;
 
         // Return different responses based on job state
         switch (state) {
@@ -37,7 +42,7 @@ export async function GET(
                 const result = job.returnvalue;
                 return NextResponse.json({
                     status: 'completed',
-                    result: result?.result || result
+                    result: result
                 });
 
             case 'failed':
@@ -50,7 +55,7 @@ export async function GET(
             case 'active':
                 return NextResponse.json({
                     status: 'processing',
-                    progress: progress || 0
+                    progress: progress
                 });
 
             case 'waiting':

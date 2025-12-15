@@ -223,7 +223,7 @@ Current Date: ${currentDate}
      * Detects if a request is complex and should be processed asynchronously
      * Uses semantic analysis instead of hardcoded keywords
      */
-    private static async detectComplexIntent(message: string): Promise<boolean> {
+    static async detectComplexIntent(message: string): Promise<boolean> {
         const lowerMessage = message.toLowerCase();
 
         // Pattern 1: Weekly/Monthly schedules in any language
