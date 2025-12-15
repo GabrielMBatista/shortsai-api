@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
+import { prisma } from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
-import { UnauthorizedError, NotFoundError } from '@/lib/errors';
-import { ChannelService } from '@/lib/services/channel-service';
+import { UnauthorizedError, NotFoundError, ForbiddenError } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,9 +30,15 @@ export async function GET(
 
         reqLogger.debug({ channelId: id, limit }, 'Fetching channel videos');
 
-        const videos = await ChannelService.getChannelVideos(id, session.user.id, limit);
+        const channel = await prisma.channel.findUnique({ where: { id } });
+        if (!channel) throw new NotFoundError('Channel', id);
+        if (channel.userId !== session.user.id) throw new ForbiddenError('Access denied');
 
-        if (!videos) throw new NotFoundError('Channel videos');
+        const videos = await prisma.youtubeVideo.findMany({
+            where: { channelId: id },
+            orderBy: { publishedAt: 'desc' },
+            take: limit
+        });
 
         const duration = Date.now() - startTime;
         reqLogger.info(

@@ -39,16 +39,12 @@ export async function GET(
                         type: true,
                         version: true
                     }
-                },
-                persona_history: {
-                    orderBy: { switched_at: 'desc' },
-                    take: 10
                 }
             }
         });
 
         if (!channel) throw new NotFoundError('Channel', id);
-        if (channel.user_id !== session.user.id) {
+        if (channel.userId !== session.user.id) {
             throw new ForbiddenError('You do not have access to this channel');
         }
 

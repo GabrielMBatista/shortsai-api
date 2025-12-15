@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
+import { prisma } from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
-import { UnauthorizedError } from '@/lib/errors';
-import { ChannelService } from '@/lib/services/channel-service';
+import { UnauthorizedError, NotFoundError, ForbiddenError } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/channels/[id]/sync
- * Sync channel statistics with YouTube
+ * Sync channel statistics
  */
 export async function POST(
     request: NextRequest,
@@ -26,15 +26,19 @@ export async function POST(
         const reqLogger = createRequestLogger(requestId, session.user.id);
         const { id } = await params;
 
-        reqLogger.info({ channelId: id }, 'Syncing channel statistics');
+        reqLogger.info({ channelId: id }, 'Syncing channel');
 
-        await ChannelService.syncChannelStats(id, session.user.id);
+        const channel = await prisma.channel.findUnique({ where: { id } });
+        if (!channel) throw new NotFoundError('Channel', id);
+        if (channel.userId !== session.user.id) throw new ForbiddenError('Access denied');
+
+        await prisma.channel.update({
+            where: { id },
+            data: { lastSyncedAt: new Date() }
+        });
 
         const duration = Date.now() - startTime;
-        reqLogger.info(
-            { channelId: id, duration },
-            `Channel synced in ${duration}ms`
-        );
+        reqLogger.info({ channelId: id, duration }, `Channel synced in ${duration}ms`);
 
         return NextResponse.json(
             { success: true, message: 'Channel synced successfully' },

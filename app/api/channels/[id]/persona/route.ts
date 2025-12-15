@@ -37,7 +37,7 @@ export async function PATCH(
 
         const channel = await prisma.channel.findUnique({ where: { id } });
         if (!channel) throw new NotFoundError('Channel', id);
-        if (channel.user_id !== session.user.id) {
+        if (channel.userId !== session.user.id) {
             throw new ForbiddenError('Access denied');
         }
 

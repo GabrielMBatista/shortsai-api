@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
+import { prisma } from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 import { PersonaService } from '@/lib/personas/persona-service';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { UnauthorizedError, NotFoundError, ForbiddenError } from '@/lib/errors';
-import { validateRequest } from '@/lib/validation';
-import { updatePersonaSchema } from '@/lib/schemas';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +69,7 @@ export async function PATCH(
 
         reqLogger.info({ personaId: id }, 'Updating persona');
 
-        const body = await validateRequest(request, updatePersonaSchema);
+        const body = await request.json();
         const persona = await PersonaService.updatePersona(id, session.user.id, body);
 
         const duration = Date.now() - startTime;
@@ -110,7 +109,10 @@ export async function DELETE(
 
         reqLogger.info({ personaId: id }, 'Deleting persona');
 
-        await PersonaService.deletePersona(id, session.user.id);
+        const hasAccess = await PersonaService.canAccessPersona(session.user.id, id);
+        if (!hasAccess) throw new ForbiddenError('Access denied');
+
+        await prisma.persona.delete({ where: { id } });
 
         const duration = Date.now() - startTime;
         reqLogger.info(

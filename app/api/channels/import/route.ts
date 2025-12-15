@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
+import { prisma } from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { UnauthorizedError } from '@/lib/errors';
 import { validateRequest } from '@/lib/validation';
 import { z } from 'zod';
-import { ChannelService } from '@/lib/services/channel-service';
 
 export const dynamic = 'force-dynamic';
 
 const importChannelSchema = z.object({
     youtubeChannelId: z.string().min(1),
-    accountId: z.string().uuid().optional()
+    googleAccountId: z.string(),
+    name: z.string().min(1).optional(),
+    description: z.string().optional()
 });
 
 /**
@@ -30,24 +32,36 @@ export async function POST(request: NextRequest) {
         const reqLogger = createRequestLogger(requestId, session.user.id);
         reqLogger.info('Importing YouTube channel');
 
-        const { youtubeChannelId, accountId } = await validateRequest(
+        const { youtubeChannelId, googleAccountId, name, description } = await validateRequest(
             request,
             importChannelSchema
         );
 
-        const channel = await ChannelService.importChannel(
-            session.user.id,
-            youtubeChannelId,
-            accountId
-        );
+        const channel = await prisma.channel.upsert({
+            where: {
+                userId_youtubeChannelId: {
+                    userId: session.user.id,
+                    youtubeChannelId
+                }
+            },
+            update: {
+                name: name || undefined,
+                description: description || undefined,
+                lastSyncedAt: new Date()
+            },
+            create: {
+                youtubeChannelId,
+                googleAccountId,
+                userId: session.user.id,
+                name: name || youtubeChannelId,
+                description: description || null,
+                isActive: true
+            }
+        });
 
         const duration = Date.now() - startTime;
         reqLogger.info(
-            {
-                channelId: channel.id,
-                youtubeChannelId,
-                duration
-            },
+            { channelId: channel.id, youtubeChannelId, duration },
             `Channel imported in ${duration}ms`
         );
 
