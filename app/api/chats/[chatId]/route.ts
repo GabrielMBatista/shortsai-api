@@ -8,15 +8,16 @@ import { PersonaChatService } from '@/lib/personas/persona-chat-service';
  */
 export async function GET(
     req: NextRequest,
-    { params }: { params: { chatId: string } }
+    { params }: { params: Promise<{ chatId: string }> }
 ) {
+    const { chatId } = await params;
     try {
         const session = await auth();
         if (!session?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const chat = await PersonaChatService.getChat(params.chatId, session.user.id);
+        const chat = await PersonaChatService.getChat(chatId, session.user.id);
         return NextResponse.json(chat);
     } catch (error: any) {
         console.error('[GET /api/chats/[chatId]] Error:', error);
@@ -33,8 +34,9 @@ export async function GET(
  */
 export async function PATCH(
     req: NextRequest,
-    { params }: { params: { chatId: string } }
+    { params }: { params: Promise<{ chatId: string }> }
 ) {
+    const { chatId } = await params;
     try {
         const session = await auth();
         if (!session?.user?.id) {
@@ -49,7 +51,7 @@ export async function PATCH(
         }
 
         const chat = await PersonaChatService.updateChatTitle(
-            params.chatId,
+            chatId,
             session.user.id,
             title
         );
@@ -70,15 +72,16 @@ export async function PATCH(
  */
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { chatId: string } }
+    { params }: { params: Promise<{ chatId: string }> }
 ) {
+    const { chatId } = await params;
     try {
         const session = await auth();
         if (!session?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        await PersonaChatService.deleteChat(params.chatId, session.user.id);
+        await PersonaChatService.deleteChat(chatId, session.user.id);
         return NextResponse.json({ success: true });
     } catch (error: any) {
         console.error('[DELETE /api/chats/[chatId]] Error:', error);

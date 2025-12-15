@@ -8,8 +8,9 @@ import { PersonaChatService } from '@/lib/personas/persona-chat-service';
  */
 export async function POST(
     req: NextRequest,
-    { params }: { params: { chatId: string } }
+    { params }: { params: Promise<{ chatId: string }> }
 ) {
+    const { chatId } = await params;
     try {
         const session = await auth();
         if (!session?.user?.id) {
@@ -27,7 +28,7 @@ export async function POST(
         }
 
         const message = await PersonaChatService.addMessage(
-            params.chatId,
+            chatId,
             session.user.id,
             role,
             content

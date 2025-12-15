@@ -8,16 +8,16 @@ import { PersonaChatService } from '@/lib/personas/persona-chat-service';
  */
 export async function GET(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
+    const { id } = await params;
     try {
         const session = await auth();
         if (!session?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const personaId = params.id;
-        const chats = await PersonaChatService.getUserChats(session.user.id, personaId);
+        const chats = await PersonaChatService.getUserChats(session.user.id, id);
 
         return NextResponse.json(chats);
     } catch (error: any) {
@@ -35,21 +35,21 @@ export async function GET(
  */
 export async function POST(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
+    const { id } = await params;
     try {
         const session = await auth();
         if (!session?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const personaId = params.id;
         const body = await req.json();
         const { channelId, title } = body;
 
         const chat = await PersonaChatService.createChat(
             session.user.id,
-            personaId,
+            id,
             channelId,
             title
         );
