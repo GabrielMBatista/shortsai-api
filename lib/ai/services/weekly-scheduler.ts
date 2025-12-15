@@ -52,43 +52,56 @@ export class WeeklyScheduler {
         const fullPrompt = `
 ${personaInstructions}
 
+═══════════════════════════════════════════════════════
 CONTEXTO DO CANAL:
 ${channelContext}
 
 REQUISIÇÃO DO USUÁRIO:
 ${message}
 
-INSTRUÇÃO CRÍTICA:
-Você DEVE retornar APENAS um JSON válido seguindo EXATAMENTE o schema "SEMANA_COMPLETA" definido em suas instruções (FORMATOS_OFICIAIS_DE_RETORNO.SEMANA_COMPLETA).
+═══════════════════════════════════════════════════════
+🎯 TAREFA ESPECÍFICA:
 
-⚠️ IMPORTANTE: O id_da_semana DEVE ser exatamente: "${weekId}"
+Gerar um cronograma semanal completo de 7 dias (segunda a domingo) seguindo o formato "SEMANA_COMPLETA" definido em FORMATOS_OFICIAIS_DE_RETORNO.
 
-ESTRUTURA OBRIGATÓRIA (todos os dias IDENTICAMENTE):
+⚠️ VOCÊ DEVE RESPEITAR **TODAS** AS REGRAS DA PERSONA:
+- hooks_de_alta_eficacia (primeira cena sempre com hook emocional)
+- cta_padrao (última cena sempre com CTA)
+- regra_de_tempo_e_densidade (calcular duration baseado em palavras)
+- banco_de_cenarios_seguro (usar apenas cenários listados)
+- modelo_visual_constante_de_jesus (descrição precisa em toda aparição)
+- heuristica_biblica (selecionar versos inteligentemente por tema emocional)
+
+⚠️ CALCULAR DURAÇÃO CORRETA:
+- Virais: cada cena 3-5s, total 20-30s
+- Longos: cada cena 5-8s, MÍNIMO 70s (adicionar cenas se necessário)
+- Usar campo "duration" em CADA cena com valor calculado
+
+⚠️ ESTRUTURA OBRIGATÓRIA POR VÍDEO:
 {
-  "id_da_semana": "${weekId}",
-  "meta_global": { "objetivo": "...", "regra_visual_critica": "...", "ajuste_tecnico": "..." },
-  "cronograma": {
-    "segunda_feira": {
-      "tema_dia": "...",
-      "viral_1": { "titulo": "...", "hook_falado": "...", "scenes": [...] },
-      "viral_2": { "titulo": "...", "hook_falado": "...", "scenes": [...] },
-      "longo": { "titulo": "...", "hook_falado": "...", "scenes": [...] }
+  "titulo": "...",
+  "hook_falado": "um dos hooks_de_alta_eficacia",
+  "scenes": [
+    {
+      "scene": 1,
+      "visual": "descrição do banco_de_cenarios_seguro",
+      "narration": "hook emocional curto",
+      "duration": 4  ← CALCULAR baseado em palavras (3.5 palavras/seg)
     },
-    "terca_feira": { MESMA ESTRUTURA },
-    "quarta_feira": { MESMA ESTRUTURA },
-    "quinta_feira": { MESMA ESTRUTURA },
-    "sexta_feira": { MESMA ESTRUTURA },
-    "sabado": { MESMA ESTRUTURA },
-    "domingo": { MESMA ESTRUTURA }
-  }
+    ... mais cenas seguindo regra_de_tempo_e_densidade,
+    {
+      "scene": N,
+      "visual": "horizonte amplo ou campo aberto",
+      "narration": "um dos cta_padrao",
+      "duration": 5
+    }
+  ]
 }
 
-REGRAS OBRIGATÓRIAS:
-- TODOS os 7 dias devem seguir EXATAMENTE a mesma estrutura
-- Cada dia tem exatamente: tema_dia, viral_1, viral_2, longo
-- Nunca use arrays diretos ou estruturas aninhadas diferentes
-- O id_da_semana DEVE ser: "${weekId}"
-- Retorne APENAS o JSON, sem texto adicional
+⚠️ ID DA SEMANA: ${weekId}
+
+═══════════════════════════════════════════════════════
+RETORNE APENAS O JSON NO FORMATO SEMANA_COMPLETA definido na persona.
         `.trim();
 
         // 3. Generate the full schedule
