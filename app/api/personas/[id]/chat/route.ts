@@ -16,7 +16,7 @@ export async function POST(
 
         const { id: personaId } = await params;
         const body = await request.json();
-        const { message, history, channelId } = body;
+        const { message, history, channelId, language, voice } = body;
 
         if (!message) {
             return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -27,7 +27,9 @@ export async function POST(
             personaId,
             message,
             history || [],
-            channelId
+            channelId,
+            language,
+            voice
         );
 
         return NextResponse.json({ response });

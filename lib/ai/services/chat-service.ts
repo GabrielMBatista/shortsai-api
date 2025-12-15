@@ -13,7 +13,9 @@ export class ChatService {
         personaId: string,
         message: string,
         history: { role: 'user' | 'model', parts: { text: string }[] }[] = [],
-        channelId?: string
+        channelId?: string,
+        language?: string,
+        voice?: string
     ) {
         // 1. Fetch Channel Context (Pre-fetch for both flows)
         let channelContext = '';
@@ -72,12 +74,23 @@ STRATEGIC INSTRUCTIONS:
             }
         }
 
-        // 2. Intelligent Detection of Complex/Long-running Tasks
+        // 2. Build language/voice context if provided
+        let configContext = '';
+        if (language || voice) {
+            configContext = `\n\n═══════════════════════════════════════
+CONFIGURAÇÕES DO USUÁRIO:
+${language ? `- IDIOMA OBRIGATÓRIO: ${language}\n  Todas as narrações DEVEM ser escritas em ${language}.` : ''}
+${voice ? `- VOZ TTS: ${voice}\n  Use esta voz para referência de tom e estilo.` : ''}
+═══════════════════════════════════════\n`;
+        }
+
+        // 3. Intelligent Detection of Complex/Long-running Tasks
         // Instead of hardcoding keywords, we analyze the semantic intent
         const isComplexRequest = await this.detectComplexIntent(message);
 
         console.log(`[ChatService] Message: "${message.substring(0, 100)}..."`);
         console.log(`[ChatService] Complex request detected: ${isComplexRequest}`);
+        console.log(`[ChatService] Language: ${language || 'not specified'}, Voice: ${voice || 'not specified'}`);
 
         if (isComplexRequest) {
             console.log(`[ChatService] 🚀 Processing complex request directly (no queue)...`);
@@ -86,7 +99,7 @@ STRATEGIC INSTRUCTIONS:
                 const resultJson = await WeeklyScheduler.generate(
                     userId,
                     personaId,
-                    message,
+                    message + configContext,
                     channelContext
                 );
 
