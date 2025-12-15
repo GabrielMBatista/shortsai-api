@@ -1,23 +1,7 @@
 import { parse } from 'csv-parse/sync';
 
 interface CSVRow {
-    video_id: string;
-    date: string;
-    title?: string;
-    published_at?: string;
-    views?: string;
-    watch_time_minutes?: string;
-    avg_view_duration_sec?: string;
-    average_view_duration?: string; // Alternative column name
-    impressions?: string;
-    impressions_ctr?: string;
-    ctr?: string; // Alternative column name
-    likes?: string;
-    comments?: string;
-    average_percentage_viewed?: string;
-    average_view_percentage?: string; // Alternative column name
-    traffic_source?: string;
-    device_type?: string;
+    [key: string]: string | undefined;
 }
 
 export interface ParsedMetric {
@@ -48,6 +32,113 @@ export interface ParseResult {
     };
 }
 
+// Mapping of internal keys to possible CSV header names (normalized to snake_case or specific strings)
+const COLUMN_MAPPINGS: Record<string, string[]> = {
+    video_id: ['video_id', 'content', 'video', 'id'],
+    title: ['title', 'video_title', 'video title'],
+    published_at: ['published_at', 'video_publish_time', 'video publish time', 'publish_time', 'time_published'],
+    date: ['date', 'time'],
+    views: ['views', 'view_count'],
+    watch_time_minutes: ['watch_time_minutes', 'watch_time_hours', 'watch time (hours)'],
+    avg_view_duration_sec: ['avg_view_duration_sec', 'average_view_duration', 'average view duration'],
+    impressions: ['impressions'],
+    impressions_ctr: ['impressions_ctr', 'ctr', 'impressions click-through rate (%)', 'impressions_click_through_rate'],
+    likes: ['likes'],
+    comments: ['comments', 'comments_added', 'comments added'],
+    average_percentage_viewed: ['average_percentage_viewed', 'average_view_percentage', 'average percentage viewed (%)'],
+    traffic_source: ['traffic_source'],
+    device_type: ['device_type']
+};
+
+/**
+ * Helper to normalize string to comparison key
+ */
+function normalizeKey(key: string): string {
+    return key.trim().toLowerCase().replace(/['"]/g, '');
+}
+
+/**
+ * Parse number handling localized formats (1.234,56 or 1,234.56)
+ */
+function parseNumber(value: string | undefined): number | undefined {
+    if (!value) return undefined;
+
+    let cleanVal = value.trim();
+    if (cleanVal === '') return undefined;
+
+    // Check if it's a "comma as decimal" format (e.g. 119,14 or 1.234,56)
+    // Heuristic: If it has a comma and NO dots, or if comma is after dot
+    const hasComma = cleanVal.includes(',');
+    const hasDot = cleanVal.includes('.');
+
+    if (hasComma && !hasDot) {
+        // e.g. "119,14" -> replace comma with dot
+        cleanVal = cleanVal.replace(',', '.');
+    } else if (hasComma && hasDot) {
+        const lastDot = cleanVal.lastIndexOf('.');
+        const lastComma = cleanVal.lastIndexOf(',');
+
+        if (lastComma > lastDot) {
+            // e.g. 1.234,56 (European/BR) -> Remove dots, replace comma with dot
+            cleanVal = cleanVal.replace(/\./g, '').replace(',', '.');
+        } else {
+            // e.g. 1,234.56 (US) -> Remove commas
+            cleanVal = cleanVal.replace(/,/g, '');
+        }
+    }
+
+    // Remove any remaining % signs
+    cleanVal = cleanVal.replace(/%/g, '');
+
+    const num = parseFloat(cleanVal);
+    return isNaN(num) ? undefined : num;
+}
+
+/**
+ * Parse duration string (HH:MM:SS or MM:SS or seconds) to seconds
+ */
+function parseDurationToSeconds(value: string | undefined): number | undefined {
+    if (!value) return undefined;
+
+    // If it's already a number (possibly as string)
+    if (!value.includes(':')) {
+        return parseNumber(value);
+    }
+
+    const parts = value.split(':').map(part => parseFloat(part));
+    let seconds = 0;
+
+    if (parts.length === 3) {
+        // HH:MM:SS
+        seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+    } else if (parts.length === 2) {
+        // MM:SS
+        seconds = parts[0] * 60 + parts[1];
+    }
+
+    return seconds;
+}
+
+/**
+ * Identify column mappings from headers
+ */
+function identifyColumns(headers: string[]): Record<string, string> {
+    const map: Record<string, string> = {};
+    const normalizedHeaders = headers.map(normalizeKey);
+
+    for (const [internalKey, variations] of Object.entries(COLUMN_MAPPINGS)) {
+        for (const variation of variations) {
+            const normalizedVar = normalizeKey(variation);
+            const index = normalizedHeaders.indexOf(normalizedVar);
+            if (index !== -1) {
+                map[internalKey] = headers[index]; // Store original header key
+                break;
+            }
+        }
+    }
+    return map;
+}
+
 /**
  * Parse YouTube Studio CSV export
  * Handles multiple column name variations and validates data
@@ -76,99 +167,108 @@ export function parseYouTubeCSV(fileContent: string): ParseResult {
             };
         }
 
+        // Identify columns based on first row keys
+        const headers = Object.keys(records[0]);
+        const colMap = identifyColumns(headers);
+
+        // Helper to get value using mapped key
+        const getValue = (row: CSVRow, internalKey: string): string | undefined => {
+            const header = colMap[internalKey];
+            return header ? row[header] : undefined;
+        };
+
         for (let i = 0; i < records.length; i++) {
             const row = records[i];
             const rowNumber = i + 2; // +2 for header + 0-index
 
             try {
-                // Validate required fields
-                if (!row.video_id) {
-                    errors.push({ row: rowNumber, error: 'Missing video_id' });
+                const videoId = getValue(row, 'video_id');
+
+                // Skip summary rows (e.g., "Total") or empty IDs
+                if (!videoId || videoId.toLowerCase() === 'total') {
                     continue;
                 }
 
-                if (!row.date) {
-                    errors.push({ row: rowNumber, error: 'Missing date' });
-                    continue;
+                // Parse Date
+                // If 'date' column exists, use it. Otherwise, defaults to 'published_at' if available, or today (snapshot)
+                let dateStr = getValue(row, 'date');
+                let parsedDate: Date;
+
+                if (dateStr) {
+                    parsedDate = new Date(dateStr);
+                } else {
+                    // Use published_at as date? Or just use current date for snapshot import?
+                    // For lifetime videos export, there is no "Date" column. We use Today (midnight).
+                    parsedDate = new Date();
+                    parsedDate.setHours(0, 0, 0, 0);
                 }
 
-                // Parse date safely
-                const parsedDate = new Date(row.date);
                 if (isNaN(parsedDate.getTime())) {
-                    errors.push({ row: rowNumber, error: `Invalid date format: ${row.date}` });
+                    errors.push({ row: rowNumber, error: 'Invalid date format' });
                     continue;
+                }
+
+                const publishedAtStr = getValue(row, 'published_at');
+                let publishedAt: Date | undefined;
+                if (publishedAtStr) {
+                    const pubDate = new Date(publishedAtStr);
+                    if (!isNaN(pubDate.getTime())) {
+                        publishedAt = pubDate;
+                    }
                 }
 
                 // Build metric object
                 const metric: ParsedMetric = {
-                    youtubeVideoId: row.video_id.trim(),
+                    youtubeVideoId: videoId,
                     date: parsedDate,
+                    publishedAt: publishedAt
                 };
 
-                // Optional fields with safe parsing
-                if (row.title) metric.title = row.title;
+                // Optional fields
+                const title = getValue(row, 'title');
+                if (title) metric.title = title;
 
-                if (row.published_at) {
-                    const pubDate = new Date(row.published_at);
-                    if (!isNaN(pubDate.getTime())) {
-                        metric.publishedAt = pubDate;
-                    }
+                metric.views = parseNumber(getValue(row, 'views'));
+
+                // Handle Watch Time: if source was 'watch time (hours)', convert to minutes
+                const watchTimeRaw = getValue(row, 'watch_time_minutes'); // Mapped to column
+                // Check which column matched
+                const matchedWatchTimeHeader = colMap['watch_time_minutes'];
+                let watchTime = parseNumber(watchTimeRaw);
+
+                if (watchTime !== undefined && matchedWatchTimeHeader && matchedWatchTimeHeader.toLowerCase().includes('hours')) {
+                    watchTime = watchTime * 60;
                 }
+                metric.watchTimeMinutes = watchTime;
 
-                if (row.views) {
-                    const views = parseInt(row.views.replace(/,/g, ''), 10);
-                    if (!isNaN(views)) metric.views = views;
+                // Duration
+                metric.avgViewDurationSec = parseDurationToSeconds(getValue(row, 'avg_view_duration_sec'));
+
+                metric.impressions = parseNumber(getValue(row, 'impressions'));
+
+                // CTR (Percentage)
+                let ctr = parseNumber(getValue(row, 'impressions_ctr'));
+                if (ctr !== undefined && ctr > 1) {
+                    // Assume percentage 5.2 -> 0.052
+                    const matchedHeader = colMap['impressions_ctr'];
+                    // If header contains '%', strictly divide? Or just assume heuristic.
+                    // Heuristic: CTR > 1 is likely percentage
+                    ctr = ctr / 100;
                 }
+                metric.impressionsCtr = ctr;
 
-                if (row.watch_time_minutes) {
-                    const watchTime = parseFloat(row.watch_time_minutes.replace(/,/g, ''));
-                    if (!isNaN(watchTime)) metric.watchTimeMinutes = watchTime;
+                metric.likes = parseNumber(getValue(row, 'likes'));
+                metric.comments = parseNumber(getValue(row, 'comments'));
+
+                // Avg Viewed Percent
+                let avgPercent = parseNumber(getValue(row, 'average_percentage_viewed'));
+                if (avgPercent !== undefined && avgPercent > 1) {
+                    avgPercent = avgPercent / 100;
                 }
+                metric.averageViewedPercent = avgPercent;
 
-                // Handle both column name variations
-                const avgDuration = row.avg_view_duration_sec || row.average_view_duration;
-                if (avgDuration) {
-                    const duration = parseFloat(avgDuration.replace(/,/g, ''));
-                    if (!isNaN(duration)) metric.avgViewDurationSec = duration;
-                }
-
-                if (row.impressions) {
-                    const impr = parseInt(row.impressions.replace(/,/g, ''), 10);
-                    if (!isNaN(impr)) metric.impressions = impr;
-                }
-
-                const ctr = row.impressions_ctr || row.ctr;
-                if (ctr) {
-                    // Handle percentage format (e.g., "5.2%" or "0.052")
-                    let ctrValue = parseFloat(ctr.replace(/%/g, '').replace(/,/g, ''));
-                    if (!isNaN(ctrValue)) {
-                        // If value is > 1, assume it's in percentage form (5.2 instead of 0.052)
-                        if (ctrValue > 1) ctrValue = ctrValue / 100;
-                        metric.impressionsCtr = ctrValue;
-                    }
-                }
-
-                if (row.likes) {
-                    const likes = parseInt(row.likes.replace(/,/g, ''), 10);
-                    if (!isNaN(likes)) metric.likes = likes;
-                }
-
-                if (row.comments) {
-                    const comments = parseInt(row.comments.replace(/,/g, ''), 10);
-                    if (!isNaN(comments)) metric.comments = comments;
-                }
-
-                const avgPercent = row.average_percentage_viewed || row.average_view_percentage;
-                if (avgPercent) {
-                    let percent = parseFloat(avgPercent.replace(/%/g, '').replace(/,/g, ''));
-                    if (!isNaN(percent)) {
-                        if (percent > 1) percent = percent / 100;
-                        metric.averageViewedPercent = percent;
-                    }
-                }
-
-                if (row.traffic_source) metric.trafficSource = row.traffic_source.trim();
-                if (row.device_type) metric.deviceType = row.device_type.trim();
+                metric.trafficSource = getValue(row, 'traffic_source');
+                metric.deviceType = getValue(row, 'device_type');
 
                 metrics.push(metric);
             } catch (rowError) {
@@ -180,7 +280,7 @@ export function parseYouTubeCSV(fileContent: string): ParseResult {
         }
 
         return {
-            success: errors.length === 0,
+            success: errors.length === 0 || metrics.length > 0, // Success if at least some metrics imported
             data: metrics,
             errors,
             stats: {
@@ -210,19 +310,19 @@ export function validateCSVStructure(fileContent: string): {
             .split(',')
             .map((h) => h.trim().replace(/"/g, ''));
 
-        const requiredColumns = ['video_id', 'date'];
-        const missingColumns = requiredColumns.filter(
-            (col) => !headers.includes(col) && !headers.includes(col.replace('_', ' '))
-        );
+        // We require at least 'video_id' (or 'content')
+        // We do NOT strictly require date anymore, as we default to Now for snapshots
+        const map = identifyColumns(headers);
+        const hasVideoId = !!map['video_id'];
 
         return {
-            valid: missingColumns.length === 0,
-            missingColumns,
+            valid: hasVideoId,
+            missingColumns: hasVideoId ? [] : ['video_id (or Content)'],
         };
     } catch (error) {
         return {
             valid: false,
-            missingColumns: ['video_id', 'date'],
+            missingColumns: ['Header parsing failed'],
         };
     }
 }
