@@ -28,7 +28,25 @@ export class WeeklyScheduler {
 
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId);
 
-        // 2. Build prompt using persona's system instructions
+        // 2. Calculate next full week (Mon-Sun)
+        const now = new Date();
+        const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday
+        const daysUntilMonday = dayOfWeek === 0 ? 1 : dayOfWeek === 1 ? 0 : 8 - dayOfWeek;
+
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + daysUntilMonday);
+        monday.setHours(0, 0, 0, 0);
+
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+
+        const monthNames = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
+            'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+        const weekId = `${monday.getDate()}-${sunday.getDate()}_${monthNames[monday.getMonth()]}_${monday.getFullYear().toString().slice(-2)}`;
+
+        console.log(`[WeeklyScheduler] Generating for week: ${weekId}`);
+
+        // 3. Build prompt using persona's system instructions
         const personaInstructions = persona.systemInstruction || '';
 
         const fullPrompt = `
@@ -43,9 +61,11 @@ ${message}
 INSTRUÇÃO CRÍTICA:
 Você DEVE retornar APENAS um JSON válido seguindo EXATAMENTE o schema "SEMANA_COMPLETA" definido em suas instruções (FORMATOS_OFICIAIS_DE_RETORNO.SEMANA_COMPLETA).
 
+⚠️ IMPORTANTE: O id_da_semana DEVE ser exatamente: "${weekId}"
+
 ESTRUTURA OBRIGATÓRIA (todos os dias IDENTICAMENTE):
 {
-  "id_da_semana": "DD-DD_MMM_YY",
+  "id_da_semana": "${weekId}",
   "meta_global": { "objetivo": "...", "regra_visual_critica": "...", "ajuste_tecnico": "..." },
   "cronograma": {
     "segunda_feira": {
@@ -67,6 +87,7 @@ REGRAS OBRIGATÓRIAS:
 - TODOS os 7 dias devem seguir EXATAMENTE a mesma estrutura
 - Cada dia tem exatamente: tema_dia, viral_1, viral_2, longo
 - Nunca use arrays diretos ou estruturas aninhadas diferentes
+- O id_da_semana DEVE ser: "${weekId}"
 - Retorne APENAS o JSON, sem texto adicional
         `.trim();
 
