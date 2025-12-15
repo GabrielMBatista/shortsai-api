@@ -77,11 +77,20 @@ REGRAS OBRIGATÓRIAS:
         // 4. Parse and validate
         let finalJson;
         try {
-            finalJson = JSON.parse(this.cleanJson(resultJsonStr));
+            const cleanedJson = this.cleanJson(resultJsonStr);
+            console.log('[WeeklyScheduler] Raw JSON length:', resultJsonStr.length, 'chars');
+            console.log('[WeeklyScheduler] Cleaned JSON length:', cleanedJson.length, 'chars');
+
+            finalJson = JSON.parse(cleanedJson);
             console.log('[WeeklyScheduler] ✅ Schedule generated successfully');
-        } catch (e) {
-            console.error('[WeeklyScheduler] ❌ Failed to parse generated JSON', e);
-            throw new Error('Failed to generate valid schedule JSON.');
+            console.log('[WeeklyScheduler] Days in schedule:', Object.keys(finalJson.cronograma || {}).length);
+        } catch (e: any) {
+            console.error('[WeeklyScheduler] ❌ Failed to parse generated JSON');
+            console.error('[WeeklyScheduler] Parse error:', e.message);
+            console.error('[WeeklyScheduler] First 500 chars of response:', resultJsonStr.substring(0, 500));
+            console.error('[WeeklyScheduler] Last 500 chars of response:', resultJsonStr.substring(resultJsonStr.length - 500));
+
+            throw new Error(`Failed to generate valid schedule JSON. Parse error: ${e.message}. Check logs for details.`);
         }
 
         return JSON.stringify(finalJson, null, 2);
@@ -94,7 +103,7 @@ REGRAS OBRIGATÓRIAS:
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
                 config: {
                     temperature: temp,
-                    maxOutputTokens: 16000,
+                    maxOutputTokens: 32000, // Increased for full week schedule
                     responseMimeType: "application/json" // Force JSON mode
                 }
             });
@@ -105,10 +114,24 @@ REGRAS OBRIGATÓRIAS:
 
     private static cleanJson(str: string): string {
         try {
-            // Remove code blocks if present
-            let cleaned = str.replace(/```json/g, '').replace(/```/g, '').trim();
-            return cleaned;
+            // Remove markdown code blocks
+            let cleaned = str.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+            // Remove trailing commas before } or ]
+            cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+
+            // Remove comments (// and /* */)
+            cleaned = cleaned.replace(/\/\/.*$/gm, '');
+            cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '');
+
+            // Fix common issues with quotes in narration
+            // This is a heuristic - replace smart quotes with normal quotes
+            cleaned = cleaned.replace(/[""]/g, '"');
+            cleaned = cleaned.replace(/['']/g, "'");
+
+            return cleaned.trim();
         } catch (e) {
+            console.error('[WeeklyScheduler] Error cleaning JSON:', e);
             return str;
         }
     }
