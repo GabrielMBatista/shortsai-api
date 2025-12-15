@@ -15,7 +15,8 @@ export class ChatService {
         history: { role: 'user' | 'model', parts: { text: string }[] }[] = [],
         channelId?: string,
         language?: string,
-        voice?: string
+        voice?: string,
+        chatId?: string // ID do chat para salvar histórico
     ) {
         // 1. Fetch Channel Context (Pre-fetch for both flows)
         let channelContext = '';
@@ -180,13 +181,30 @@ Current Date: ${currentDate}
             }, userId);
 
             success = true;
+
+            // 7. Salvar mensagens no histórico do chat (se chatId fornecido)
+            if (chatId && success) {
+                try {
+                    const { PersonaChatService } = await import('../../../lib/personas/persona-chat-service');
+
+                    // Salvar mensagem do usuário
+                    await PersonaChatService.addMessage(chatId, userId, 'user', message);
+
+                    // Salvar resposta do modelo
+                    await PersonaChatService.addMessage(chatId, userId, 'model', result);
+                } catch (chatError) {
+                    console.error('[ChatService] Failed to save to chat history:', chatError);
+                    // Não falhar a request se apenas o salvamento do histórico falhar
+                }
+            }
+
             return result;
 
         } catch (e) {
             error = e;
             throw e;
         } finally {
-            // 6. Usage Tracking
+            // 8. Usage Tracking
             const duration = Date.now() - startTime;
             try {
                 // Log usage
@@ -200,7 +218,8 @@ Current Date: ${currentDate}
                         errorMsg: error?.message,
                         metadata: {
                             messageLength: message.length,
-                            channelId: channelId
+                            channelId: channelId,
+                            chatId: chatId
                         }
                     }
                 });
