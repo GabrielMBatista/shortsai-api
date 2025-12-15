@@ -133,7 +133,7 @@ RETORNE APENAS O JSON NO FORMATO SEMANA_COMPLETA definido na persona.
     private static async callGemini(ai: any, isSystem: boolean, userId: string, prompt: string, temp: number) {
         return executeRequest(isSystem, async () => {
             const resp = await ai.models.generateContent({
-                model: "gemini-1.5-flash",
+                model: "gemini-2.5-flash",
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
                 config: {
                     temperature: temp,
@@ -141,7 +141,7 @@ RETORNE APENAS O JSON NO FORMATO SEMANA_COMPLETA definido na persona.
                     responseMimeType: "application/json" // Force JSON mode
                 }
             });
-            await trackUsage(userId, 'gemini', 'gemini-1.5-flash', 'text');
+            await trackUsage(userId, 'gemini', 'gemini-2.5-flash', 'text');
             return resp.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
         }, userId);
     }

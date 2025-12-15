@@ -66,7 +66,7 @@ export class VideoService {
             const { client: ai } = await KeyManager.getGeminiClient(userId, keys?.gemini);
 
             const result = await ai.models.generateContent({
-                model: "gemini-2.0-flash-exp",
+                model: "gemini-2.5-flash",
                 contents: [
                     {
                         role: "user",

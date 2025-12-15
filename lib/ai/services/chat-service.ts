@@ -144,7 +144,7 @@ Current Date: ${currentDate}
         try {
             const result = await executeRequest(isSystem, async () => {
                 const response = await ai.models.generateContent({
-                    model: "gemini-2.0-flash-exp",
+                    model: "gemini-2.5-flash",
                     contents: [
                         ...history,
                         { role: 'user', parts: [{ text: message }] }
