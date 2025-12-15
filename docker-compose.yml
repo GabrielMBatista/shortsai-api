@@ -103,32 +103,6 @@ services:
     networks:
       - shortsai-network
 
-  # ==============================
-  # BULLMQ WORKER (Background Jobs)
-  # ==============================
-  bullmq-worker:
-    container_name: shortsai-bullmq-worker
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: worker
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-shortsai}
-      REDIS_URL: redis://redis:6379
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      NODE_ENV: production
-    restart: always
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    networks:
-      - shortsai-network
-
 volumes:
   shortsai_data:
 

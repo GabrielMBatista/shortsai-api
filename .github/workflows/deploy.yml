@@ -33,8 +33,9 @@ jobs:
             docker run --rm -v shortsai-api_shortsai_data:/data alpine chown -R 1001:1001 /data || true
             docker run --rm -v shortsai_data:/data alpine chown -R 1001:1001 /data || true
             
-            # Build and start services: DB, Redis, API, and BullMQ Worker
-            docker-compose up -d --build db redis shortsai-api bullmq-worker
+            # Build and start services: DB, Redis, and API
+            # (Cronogramas processados direto na API agora)
+            docker-compose up -d --build db redis shortsai-api
             
             # Wait for containers to initialize
             echo "⏳ Waiting for services to stabilize..."
@@ -68,12 +69,6 @@ jobs:
               echo "ERROR: API container failed to start!"
               docker-compose logs shortsai-api --tail=100
               exit 1
-            fi
-            
-            if ! docker-compose ps bullmq-worker | grep -q "Up"; then
-              echo "⚠️  WARNING: BullMQ Worker container failed to start!"
-              docker-compose logs bullmq-worker --tail=100
-              # Don't exit, but warn
             fi
             
             echo "✅ API deployed successfully"

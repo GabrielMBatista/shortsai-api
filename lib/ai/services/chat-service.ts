@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { KeyManager } from '../core/key-manager';
 import { executeRequest } from '../core/executor';
 import { trackUsage } from '../core/usage-tracker';
+import { WeeklyScheduler } from './weekly-scheduler';
 
 export class ChatService {
     /**
@@ -79,31 +80,22 @@ STRATEGIC INSTRUCTIONS:
         console.log(`[ChatService] Complex request detected: ${isComplexRequest}`);
 
         if (isComplexRequest) {
-            console.log(`[ChatService] 🔄 Enqueuing job for async processing...`);
-            const { scheduleGenerationQueue } = await import('../../queues');
+            console.log(`[ChatService] 🚀 Processing complex request directly (no queue)...`);
 
-            // Enqueue Job
-            const job = await scheduleGenerationQueue.add('generate-weekly', {
-                userId,
-                personaId,
-                message,
-                channelContext
-            });
+            try {
+                const resultJson = await WeeklyScheduler.generate(
+                    userId,
+                    personaId,
+                    message,
+                    channelContext
+                );
 
-            console.log(`[ChatService] ✅ Job enqueued with ID: ${job.id}`);
-            console.log(`[ChatService] Job data:`, { userId, personaId, messageLength: message.length });
-
-            // Return Signal to Frontend
-            // We return a string because the chat interface expects a "text" response for now.
-            // The frontend will parse this invisible signal.
-            const response = JSON.stringify({
-                type: 'job_started',
-                jobId: job.id,
-                message: "Starting deep research task..."
-            });
-
-            console.log(`[ChatService] Returning to frontend:`, response);
-            return response;
+                console.log(`[ChatService] ✅ Complex request completed (${resultJson.length} chars)`);
+                return resultJson;
+            } catch (error: any) {
+                console.error(`[ChatService] ❌ Complex request failed:`, error);
+                throw new Error(`Falha ao processar requisição complexa: ${error.message}`);
+            }
         }
 
         // 3. Load Persona (Standard Flow)
