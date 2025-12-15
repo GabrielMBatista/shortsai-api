@@ -46,8 +46,50 @@ export class WeeklyScheduler {
 
         console.log(`[WeeklyScheduler] Generating for week: ${weekId}`);
 
+
         // 3. Build prompt using persona's system instructions
         const personaInstructions = persona.systemInstruction || '';
+
+        // 3.5. Detectar e reforçar elementos visuais da persona
+        let visualRules = '';
+        if (personaInstructions) {
+            const hasCharacterDescriptions =
+                personaInstructions.includes('JESUS:') ||
+                personaInstructions.includes('character:') ||
+                personaInstructions.includes('modelo_visual_constante');
+
+            const hasSceneBank =
+                personaInstructions.includes('banco_de_cenarios') ||
+                personaInstructions.includes('CENÁRIOS') ||
+                personaInstructions.includes('SCENARIOS');
+
+            const hasHooks =
+                personaInstructions.includes('hooks_de_alta_eficacia') ||
+                personaInstructions.includes('HOOKS') ||
+                personaInstructions.includes('Hook');
+
+            const hasCTA =
+                personaInstructions.includes('cta_padrao') ||
+                personaInstructions.includes('CTA') ||
+                personaInstructions.includes('call-to-action');
+
+            const hasVisualStyle =
+                personaInstructions.includes('ESTILO VISUAL') ||
+                personaInstructions.includes('RESTRIÇÕES TÉCNICAS') ||
+                personaInstructions.includes('visualStyle');
+
+            // Construir lista dinâmica de regras detectadas
+            const detectedRules = [];
+            if (hasHooks) detectedRules.push('- Hooks/ganchos iniciais definidos na persona');
+            if (hasCTA) detectedRules.push('- CTAs (call-to-action) finais definidos na persona');
+            if (hasSceneBank) detectedRules.push('- Banco de cenários/scenarios específicos (usar APENAS os listados)');
+            if (hasCharacterDescriptions) detectedRules.push('- Descrições de personagens/characters (manter EXATAMENTE como definido em TODA aparição)');
+            if (hasVisualStyle) detectedRules.push('- Restrições técnicas e estilo visual específico');
+
+            if (detectedRules.length > 0) {
+                visualRules = `\n⚠️ REGRAS VISUAIS E NARRATIVAS DA PERSONA DETECTADAS:\n${detectedRules.join('\n')}\n`;
+            }
+        }
 
         const fullPrompt = `
 ${personaInstructions}
@@ -65,13 +107,7 @@ ${message}
 Gerar um cronograma semanal completo de 7 dias (segunda a domingo) seguindo o formato "SEMANA_COMPLETA" definido em FORMATOS_OFICIAIS_DE_RETORNO.
 
 ⚠️ VOCÊ DEVE RESPEITAR **TODAS** AS REGRAS DA PERSONA:
-- hooks_de_alta_eficacia (primeira cena sempre com hook emocional)
-- cta_padrao (última cena sempre com CTA)
-- regra_de_tempo_e_densidade (calcular duration baseado em palavras)
-- banco_de_cenarios_seguro (usar apenas cenários listados)
-- modelo_visual_constante_de_jesus (descrição precisa em toda aparição)
-- heuristica_biblica (selecionar versos inteligentemente por tema emocional)
-
+${visualRules}
 ⚠️ CALCULAR DURAÇÃO CORRETA:
 - Virais: cada cena 3-5s, total 20-30s
 - Longos: cada cena 5-8s, MÍNIMO 70s (adicionar cenas se necessário)
@@ -80,23 +116,25 @@ Gerar um cronograma semanal completo de 7 dias (segunda a domingo) seguindo o fo
 ⚠️ ESTRUTURA OBRIGATÓRIA POR VÍDEO:
 {
   "titulo": "...",
-  "hook_falado": "um dos hooks_de_alta_eficacia",
+  "hook_falado": "hook inicial conforme persona",
   "scenes": [
     {
       "scene": 1,
-      "visual": "descrição do banco_de_cenarios_seguro",
+      "visual": "descrição visual seguindo as regras da persona",
       "narration": "hook emocional curto",
       "duration": 4  ← CALCULAR baseado em palavras (3.5 palavras/seg)
     },
-    ... mais cenas seguindo regra_de_tempo_e_densidade,
+    ... mais cenas seguindo as regras narrativas,
     {
       "scene": N,
-      "visual": "horizonte amplo ou campo aberto",
-      "narration": "um dos cta_padrao",
+      "visual": "cena final conforme persona",
+      "narration": "CTA conforme definido na persona",
       "duration": 5
     }
   ]
 }
+
+⚠️ CRITICAL: As instruções visuais da persona (descrições de personagens, cenários, estilo) têm PRIORIDADE MÁXIMA.
 
 ⚠️ ID DA SEMANA: ${weekId}
 

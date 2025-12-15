@@ -146,10 +146,58 @@ ${youtubeVideos.length > 0 ? `
         // 3. Construir prompt base
         const basePrompt = generateVideoScriptPrompt(topic, style, language, minSeconds, maxSeconds, sceneInstruction);
 
-        // 4. Prompt final (com contexto se aplicável)
-        const finalPrompt = antiRepetitionContext
-            ? `${antiRepetitionContext}\n\n${basePrompt}`
-            : basePrompt;
+        // 3.5. Reforçar descrições visuais da persona se aplicável
+        let personaVisualReinforcement = '';
+        if (persona && persona.systemInstruction) {
+            // Extrair seções visuais da systemInstruction para reforço explícito
+            const instruction = persona.systemInstruction;
+
+            // Detectar se há descrições de personagens (ex: JESUS, character, visual)
+            const hasCharacterDescriptions =
+                instruction.includes('JESUS:') ||
+                instruction.includes('character:') ||
+                instruction.includes('modelo_visual_constante');
+
+            // Detectar se há banco de cenários
+            const hasSceneBank =
+                instruction.includes('banco_de_cenarios') ||
+                instruction.includes('CENÁRIOS') ||
+                instruction.includes('SCENARIOS');
+
+            // Detectar se há estilo visual específico
+            const hasVisualStyle =
+                instruction.includes('ESTILO VISUAL') ||
+                instruction.includes('visualStyle') ||
+                instruction.includes('RESTRIÇÕES TÉCNICAS');
+
+            if (hasCharacterDescriptions || hasSceneBank || hasVisualStyle) {
+                personaVisualReinforcement = `
+═══════════════════════════════════════
+⚠️ INSTRUÇÕES VISUAIS DA PERSONA (MANDATORY)
+═══════════════════════════════════════
+VOCÊ ESTÁ USANDO A PERSONA: "${persona.name}"
+
+🎨 REGRAS VISUAIS OBRIGATÓRIAS:
+- Todas as descrições visuais (visualDescription) DEVEM seguir RIGOROSAMENTE as instruções da persona
+- Se a persona define aparência de personagens (ex: JESUS), USE EXATAMENTE essa descrição em TODA aparição
+- Se a persona define banco de cenários específicos, USE APENAS esses cenários listados
+- Se a persona define restrições técnicas (ex: sem texto, sem metáforas abstratas), RESPEITE totalmente
+- Mantenha CONSISTÊNCIA VISUAL absoluta entre todas as cenas
+
+⚠️ CRITICAL: As instruções visuais da sua system instruction têm PRIORIDADE MÁXIMA sobre qualquer outra diretriz genérica.
+═══════════════════════════════════════
+`;
+            }
+        }
+
+        // 4. Prompt final (com todos os contextos aplicáveis)
+        const promptParts = [
+            antiRepetitionContext,
+            personaVisualReinforcement,
+            basePrompt
+        ].filter(part => part.trim().length > 0);
+
+        const finalPrompt = promptParts.join('\n\n');
 
         // 5. Gerar script
         const startTime = Date.now();
