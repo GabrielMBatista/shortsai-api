@@ -6,13 +6,13 @@ import { trackUsage } from '../core/usage-tracker';
 
 /**
  * WeeklyScheduler
- * Implements a multi-step "Chain of Thought" approach to generate
- * massive weekly schedules without hitting token limits or losing context.
+ * Generates weekly content schedules using the persona's system instructions
+ * which contain the exact JSON schema and all generation rules.
  */
 export class WeeklyScheduler {
 
     /**
-     * Orchestrates the generation of a full weekly schedule.
+     * Generates a full weekly schedule using the persona's defined schema
      */
     static async generate(
         userId: string,
@@ -20,117 +20,71 @@ export class WeeklyScheduler {
         message: string,
         channelContext: string = ''
     ): Promise<string> {
-        console.log('[WeeklyScheduler] Starting multi-step generation...');
+        console.log('[WeeklyScheduler] Starting schedule generation...');
 
-        // 1. Load Persona
+        // 1. Load Persona (contains the schema and rules)
         const persona = await prisma.persona.findUnique({ where: { id: personaId } });
         if (!persona) throw new Error('Persona not found');
 
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId);
 
-        // --- STEP 1: THE BLUEPRINT ---
-        // Generate only the structure: Themes, Titles, and Hooks. No Scenes.
-        console.log('[WeeklyScheduler] Step 1: Generating Blueprint...');
-        const blueprintPrompt = `
-        CONTEXT:
-        ${channelContext}
+        // 2. Build prompt using persona's system instructions
+        const personaInstructions = persona.systemInstruction || '';
 
-        TASK:
-        You are planning a weekly content schedule for "${message}".
-        
-        STEP 1 - STRUCTURE ONLY:
-        Generate a JSON containing the "meta_global" and the "cronograma" structure.
-        For each day (segunda_feira to domingo), define:
-        - "tema_dia": The theme of the day.
-        - "viral_1", "viral_2", "longo": Objects containing ONLY "titulo" and "hook_falado".
-        
-        DO NOT generate "scenes" yet. Keep it lightweight.
-        Required JSON Structure:
-        {
-          "id_da_semana": "DD-DD_MMM_YY",
-          "meta_global": { ... },
-          "cronograma": {
-             "segunda_feira": { "tema_dia": "...", "viral_1": { "titulo": "...", "hook_falado": "..." }, ... },
-             ...
-          }
-        }
-        `;
+        const fullPrompt = `
+${personaInstructions}
 
-        const blueprintJsonStr = await this.callGemini(ai, isSystem, userId, blueprintPrompt, persona.temperature);
-        let blueprint;
+CONTEXTO DO CANAL:
+${channelContext}
+
+REQUISIÇÃO DO USUÁRIO:
+${message}
+
+INSTRUÇÃO CRÍTICA:
+Você DEVE retornar APENAS um JSON válido seguindo EXATAMENTE o schema "SEMANA_COMPLETA" definido em suas instruções (FORMATOS_OFICIAIS_DE_RETORNO.SEMANA_COMPLETA).
+
+ESTRUTURA OBRIGATÓRIA (todos os dias IDENTICAMENTE):
+{
+  "id_da_semana": "DD-DD_MMM_YY",
+  "meta_global": { "objetivo": "...", "regra_visual_critica": "...", "ajuste_tecnico": "..." },
+  "cronograma": {
+    "segunda_feira": {
+      "tema_dia": "...",
+      "viral_1": { "titulo": "...", "hook_falado": "...", "scenes": [...] },
+      "viral_2": { "titulo": "...", "hook_falado": "...", "scenes": [...] },
+      "longo": { "titulo": "...", "hook_falado": "...", "scenes": [...] }
+    },
+    "terca_feira": { MESMA ESTRUTURA },
+    "quarta_feira": { MESMA ESTRUTURA },
+    "quinta_feira": { MESMA ESTRUTURA },
+    "sexta_feira": { MESMA ESTRUTURA },
+    "sabado": { MESMA ESTRUTURA },
+    "domingo": { MESMA ESTRUTURA }
+  }
+}
+
+REGRAS OBRIGATÓRIAS:
+- TODOS os 7 dias devem seguir EXATAMENTE a mesma estrutura
+- Cada dia tem exatamente: tema_dia, viral_1, viral_2, longo
+- Nunca use arrays diretos ou estruturas aninhadas diferentes
+- Retorne APENAS o JSON, sem texto adicional
+        `.trim();
+
+        // 3. Generate the full schedule
+        console.log('[WeeklyScheduler] Calling Gemini with persona schema...');
+        const resultJsonStr = await this.callGemini(ai, isSystem, userId, fullPrompt, persona.temperature);
+
+        // 4. Parse and validate
+        let finalJson;
         try {
-            blueprint = JSON.parse(this.cleanJson(blueprintJsonStr));
+            finalJson = JSON.parse(this.cleanJson(resultJsonStr));
+            console.log('[WeeklyScheduler] ✅ Schedule generated successfully');
         } catch (e) {
-            console.error('Failed to parse blueprint', e);
-            throw new Error('Failed to generate schedule structure.');
+            console.error('[WeeklyScheduler] ❌ Failed to parse generated JSON', e);
+            throw new Error('Failed to generate valid schedule JSON.');
         }
 
-        // --- STEP 2: EXPANSION (Batched Parallel Execution) ---
-        // To avoid Rate Limits (429) and timeouts, we process in batches of 3.
-        console.log('[WeeklyScheduler] Step 2: Expanding Days (Batched)...');
-
-        const days = ['segunda_feira', 'terca_feira', 'quarta_feira', 'quinta_feira', 'sexta_feira', 'sabado', 'domingo'];
-        const expandedSchedule: any = {};
-        const BATCH_SIZE = 3;
-
-        const expandDay = async (day: string) => {
-            if (!blueprint.cronograma[day]) return;
-
-            const dayData = blueprint.cronograma[day];
-            console.log(`[WeeklyScheduler] Expanding ${day}...`);
-
-            const expansionPrompt = `
-             CONTEXT:
-             Project: ${message}
-             Week Global Goal: ${blueprint.meta_global?.objetivo || 'N/A'}
-             
-             FOCUS DAY: ${day.toUpperCase()}
-             Theme: ${dayData.tema_dia}
-             
-             INPUT DATA (Titles & Hooks defined in Step 1):
-             ${JSON.stringify(dayData, null, 2)}
- 
-             TASK:
-             Generate the FULL SCRIPTS (scenes, visual, narration, duration) for the 3 videos.
-             
-             OUTPUT:
-             Return ONLY the valid JSON object for this day.
-             `;
-
-            // Retry Logic (1 retry)
-            let attempts = 0;
-            while (attempts < 2) {
-                try {
-                    const dayResultStr = await this.callGemini(ai, isSystem, userId, expansionPrompt, persona.temperature);
-                    const dayResult = JSON.parse(this.cleanJson(dayResultStr));
-                    expandedSchedule[day] = dayResult;
-                    break; // Success
-                } catch (err) {
-                    attempts++;
-                    console.error(`Failed to expand ${day} (Attempt ${attempts}):`, err);
-                    if (attempts >= 2) {
-                        expandedSchedule[day] = dayData; // Final Fallback
-                    } else {
-                        await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
-                    }
-                }
-            }
-        };
-
-        // Process in batches
-        for (let i = 0; i < days.length; i += BATCH_SIZE) {
-            const batch = days.slice(i, i + BATCH_SIZE);
-            await Promise.all(batch.map(day => expandDay(day)));
-        }
-
-        // --- STEP 3: ASSEMBLY ---
-        console.log('[WeeklyScheduler] Step 3: Assembly...');
-        const finalOutput = {
-            ...blueprint,
-            cronograma: expandedSchedule
-        };
-
-        return JSON.stringify(finalOutput, null, 2);
+        return JSON.stringify(finalJson, null, 2);
     }
 
     private static async callGemini(ai: any, isSystem: boolean, userId: string, prompt: string, temp: number) {
@@ -140,7 +94,7 @@ export class WeeklyScheduler {
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
                 config: {
                     temperature: temp,
-                    maxOutputTokens: 16000, // Enough for 1 day or blueprint
+                    maxOutputTokens: 16000,
                     responseMimeType: "application/json" // Force JSON mode
                 }
             });
