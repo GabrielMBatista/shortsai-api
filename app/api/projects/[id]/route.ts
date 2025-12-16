@@ -6,9 +6,7 @@ import { auth } from '@/lib/auth';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { UnauthorizedError, NotFoundError, ForbiddenError } from '@/lib/errors';
-import { validateRequest } from '@/lib/validation';
-// Import direto do arquivo específico
-import { updateProjectSchema } from '@/lib/schemas/project.schema';
+// ❌ ZOD REMOVIDO - Validação Zod removida por incompatibilidade com contrato frontend
 
 export const dynamic = 'force-dynamic';
 
@@ -177,8 +175,8 @@ export async function PATCH(
 
         reqLogger.info({ projectId }, 'Updating project');
 
-        // Validate request body
-        const body = await validateRequest(request, updateProjectSchema);
+        // ❌ ZOD REMOVIDO - Apenas parse JSON direto
+        const body = await request.json();
 
         // Check if project exists and belongs to user
         const existingProject = await prisma.project.findUnique({

@@ -5,15 +5,9 @@ import { auth } from '@/lib/auth';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { UnauthorizedError, NotFoundError, ForbiddenError, BadRequestError } from '@/lib/errors';
-import { validateRequest } from '@/lib/validation';
-import { z } from 'zod';
+// ❌ ZOD REMOVIDO - Validação Zod removida por incompatibilidade com contrato frontend
 
 export const dynamic = 'force-dynamic';
-
-// Schema inline (temporário - deveria estar em channel.schema.ts)
-const updateChannelPersonaSchema = z.object({
-    personaId: z.string().uuid()
-});
 
 /**
  * PATCH /api/channels/[id]/persona
@@ -33,8 +27,13 @@ export async function PATCH(
         const reqLogger = createRequestLogger(requestId, session.user.id);
         const { id } = await params;
 
-        const body = await validateRequest(request, updateChannelPersonaSchema);
+        // ❌ ZOD REMOVIDO - Parse JSON direto
+        const body = await request.json();
         const { personaId } = body;
+
+        if (!personaId) {
+            throw new BadRequestError('personaId is required');
+        }
 
         reqLogger.info({ channelId: id, personaId }, 'Updating channel persona');
 

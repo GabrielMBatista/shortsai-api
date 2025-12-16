@@ -22,15 +22,17 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
  * Schema for updating a project
  */
 export const updateProjectSchema = z.object({
-    topic: z.string().min(1).max(500).optional(),
+    topic: z.string().min(1).max(500000).optional(), // ✅ Aceita planejamentos mensais
     style: z.string().min(1).max(100).optional(),
     // ✅ Aceita códigos de idioma como 'en', 'pt-BR', 'es', etc
     language: z.enum(['en', 'pt-BR', 'es', 'fr', 'de', 'it', 'ja', 'ko']).optional(),
     // ✅ Alinhado com Prisma enum ProjectStatus: draft | generating | completed | failed | paused
     status: z.enum(['draft', 'generating', 'completed', 'failed', 'paused']).optional(),
     folderId: commonSchemas.uuid.nullable().optional(),
+    folder_id: commonSchemas.uuid.nullable().optional(), // ✅ Aceita snake_case do frontend
     tags: z.array(z.string()).max(10).optional(),
     isArchived: z.boolean().optional(),
+    is_archived: z.boolean().optional(), // ✅ Aceita snake_case do frontend
 });
 
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;

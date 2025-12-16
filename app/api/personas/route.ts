@@ -5,9 +5,7 @@ import { PersonaService } from '@/lib/personas/persona-service';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { UnauthorizedError, ForbiddenError, BadRequestError } from '@/lib/errors';
-import { validateRequest } from '@/lib/validation';
-// Import direto do arquivo específico
-import { createPersonaSchema } from '@/lib/schemas/persona.schema';
+// ❌ ZOD REMOVIDO - Validação Zod removida por incompatibilidade com contrato frontend
 
 export const dynamic = 'force-dynamic';
 
@@ -58,8 +56,13 @@ export async function POST(request: NextRequest) {
         const reqLogger = createRequestLogger(requestId, session.user.id);
         reqLogger.info('Creating custom persona');
 
-        const body = await validateRequest(request, createPersonaSchema);
+        // ❌ ZOD REMOVIDO - Parse JSON direto
+        const body = await request.json();
         const { name, description, category, system_prompt } = body;
+
+        if (!name || !category) {
+            throw new BadRequestError('Name and category are required');
+        }
 
         const persona = await PersonaService.createCustomPersona(session.user.id, {
             name,

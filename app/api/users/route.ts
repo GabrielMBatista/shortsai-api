@@ -4,9 +4,7 @@ import { randomUUID } from 'crypto';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { BadRequestError, NotFoundError, UnauthorizedError } from '@/lib/errors';
-import { validateRequest, validateQueryParams } from '@/lib/validation';
-// Import direto do arquivo específico (não via barrel)
-import { createUserSchema, userQuerySchema } from '@/lib/schemas/user.schema';
+// ❌ ZOD REMOVIDO - Validação Zod removida por incompatibilidade com contrato frontend
 
 export const dynamic = 'force-dynamic';
 
@@ -22,9 +20,13 @@ export async function POST(request: NextRequest) {
         const reqLogger = createRequestLogger(requestId);
         reqLogger.info('Creating/updating user');
 
-        // Validate request body
-        const body = await validateRequest(request, createUserSchema);
+        // ❌ ZOD REMOVIDO - Parse JSON direto
+        const body = await request.json();
         const { email, name, avatar_url, google_id } = body;
+
+        if (!email) {
+            throw new BadRequestError('Email is required');
+        }
 
         reqLogger.debug({ email }, 'Upserting user');
 
@@ -57,9 +59,9 @@ export async function GET(request: NextRequest) {
         const reqLogger = createRequestLogger(requestId);
         const { searchParams } = new URL(request.url);
 
-        // Validate query parameters
-        const params = validateQueryParams(searchParams, userQuerySchema);
-        const { email, user_id } = params;
+        // ❌ ZOD REMOVIDO - Query params diretos
+        const email = searchParams.get('email');
+        const user_id = searchParams.get('user_id');
 
         if (email) {
             reqLogger.debug({ email }, 'Fetching user by email');

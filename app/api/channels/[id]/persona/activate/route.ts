@@ -5,13 +5,7 @@ import { auth } from '@/lib/auth';
 import { logger, createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { UnauthorizedError, NotFoundError, BadRequestError } from '@/lib/errors';
-import { validateRequest } from '@/lib/validation';
-import { z } from 'zod';
-
-// Schema inline (temporário - deveria estar em channel.schema.ts)
-const activatePersonaSchema = z.object({
-    personaId: z.string().uuid()
-});
+// ❌ ZOD REMOVIDO - Validação Zod removida por incompatibilidade com contrato frontend
 
 /**
  * POST /api/channels/[id]/persona/activate
@@ -34,8 +28,13 @@ export async function POST(
         const reqLogger = createRequestLogger(requestId, session.user.id);
         reqLogger.info({ channelId }, 'Activating persona for channel');
 
-        const body = await validateRequest(req, activatePersonaSchema);
+        // ❌ ZOD REMOVIDO - Parse JSON direto
+        const body = await req.json();
         const { personaId } = body;
+
+        if (!personaId) {
+            throw new BadRequestError('personaId is required');
+        }
 
         // Validate channel ownership
         const channel = await prisma.channel.findFirst({

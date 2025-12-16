@@ -7,9 +7,7 @@ import { auth } from '@/lib/auth';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { UnauthorizedError, NotFoundError, RateLimitError } from '@/lib/errors';
-import { validateRequest } from '@/lib/validation';
-// Import direto do arquivo específico
-import { createProjectSchema } from '@/lib/schemas/project.schema';
+// ❌ ZOD REMOVIDO - Validação Zod removida por incompatibilidade com contrato frontend
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +28,8 @@ export async function POST(request: NextRequest) {
         const reqLogger = createRequestLogger(requestId, session.user.id);
         reqLogger.info('Creating new project');
 
-        const body = await validateRequest(request, createProjectSchema) as any;
+        // ❌ ZOD REMOVIDO - Apenas parse JSON direto
+        const body = await request.json() as any;
         const {
             topic, style, language, voice_name, tts_provider, reference_image_url,
             characterIds, include_music, bg_music_prompt, duration_config, folder_id,

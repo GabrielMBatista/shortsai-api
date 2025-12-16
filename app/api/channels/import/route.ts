@@ -5,18 +5,9 @@ import { auth } from '@/lib/auth';
 import { createRequestLogger } from '@/lib/logger';
 import { handleError } from '@/lib/middleware/error-handler';
 import { UnauthorizedError, BadRequestError } from '@/lib/errors';
-import { validateRequest } from '@/lib/validation';
-import { z } from 'zod';
+// ❌ ZOD REMOVIDO - Validação Zod removida por incompatibilidade com contrato frontend
 
 export const dynamic = 'force-dynamic';
-
-// Schema inline (temporário - deveria estar em channel.schema.ts)
-const importChannelSchema = z.object({
-    youtubeChannelId: z.string().min(1),
-    googleAccountId: z.string(),
-    name: z.string().min(1).optional(),
-    description: z.string().optional()
-});
 
 /**
  * POST /api/channels/import
@@ -33,8 +24,13 @@ export async function POST(request: NextRequest) {
         const reqLogger = createRequestLogger(requestId, session.user.id);
         reqLogger.info('Importing YouTube channel');
 
-        const body = await validateRequest(request, importChannelSchema);
+        // ❌ ZOD REMOVIDO - Parse JSON direto
+        const body = await request.json();
         const { youtubeChannelId, googleAccountId, name, description } = body;
+
+        if (!youtubeChannelId || !googleAccountId) {
+            throw new BadRequestError('youtubeChannelId and googleAccountId are required');
+        }
 
         const channel = await prisma.channel.upsert({
             where: {
