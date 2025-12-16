@@ -111,9 +111,27 @@ export async function POST(request: NextRequest) {
             })) as Prisma.InputJsonValue;
         }
 
+        // Smart defaults based on TTS provider
+        const getDefaultVoice = (provider?: string) => {
+            if (!provider || provider === 'gemini') return 'Aoede'; // Gemini default
+            if (provider === 'elevenlabs') return 'EXAVITQu4vr4xnSDxMaL'; // Sarah (ElevenLabs default)
+            if (provider === 'groq') return 'alloy'; // Groq default
+            return 'Aoede'; // Fallback
+        };
+
+        // Treat empty strings as undefined
+        const safeVoiceName = voice_name?.trim() || undefined;
+        const safeTtsProvider = tts_provider?.trim() || 'gemini';
+
         const project = await prisma.project.create({
             data: {
-                user_id, topic, style, language, voice_name, tts_provider, reference_image_url,
+                user_id,
+                topic,
+                style: style || 'Realistic',
+                language: language || 'en',
+                voice_name: safeVoiceName || getDefaultVoice(safeTtsProvider),
+                tts_provider: safeTtsProvider,
+                reference_image_url,
                 ...(reference_characters_snapshot && { reference_characters_snapshot }),
                 include_music, bg_music_prompt,
                 bg_music_status: include_music ? 'pending' : null,
