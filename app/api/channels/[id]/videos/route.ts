@@ -37,24 +37,33 @@ export async function GET(
         const videos = await prisma.youtubeVideo.findMany({
             where: { channelId: id },
             orderBy: { publishedAt: 'desc' },
-            take: limit
+            take: limit,
+            include: {
+                metrics: {
+                    take: 1,
+                    orderBy: { date: 'desc' }
+                }
+            }
         });
 
         // Map to frontend VideoAnalytics format
-        const mapped = videos.map(v => ({
-            id: v.id,
-            title: v.title,
-            url: v.url,
-            thumbnail: v.thumbnail || undefined,
-            description: v.description || undefined,
-            publishedAt: v.publishedAt?.toISOString(),
-            tags: v.tags || [],
-            stats: {
-                views: v.views || 0,
-                likes: v.likes || 0,
-                comments: v.comments || 0
-            }
-        }));
+        const mapped = videos.map(v => {
+            const latestMetrics = v.metrics[0];
+            return {
+                id: v.id,
+                title: v.titleSnapshot || 'Untitled Video',
+                url: `https://www.youtube.com/watch?v=${v.youtubeVideoId}`,
+                thumbnail: undefined, // Schema não tem thumbnail
+                description: undefined, // Schema não tem description
+                publishedAt: v.publishedAt?.toISOString(),
+                tags: [], // Schema não tem tags
+                stats: {
+                    views: latestMetrics?.views || 0,
+                    likes: latestMetrics?.likes || 0,
+                    comments: latestMetrics?.comments || 0
+                }
+            };
+        });
 
         const duration = Date.now() - startTime;
         reqLogger.info(

@@ -229,6 +229,65 @@ export class ChannelService {
             }
         });
 
+        // ✅ Sincronizar vídeos também
+        try {
+            const videos = await this.getChannelVideos(channelId, { maxResults: 100 });
+
+            console.log(`[ChannelService] Syncing ${videos.length} videos for channel ${channelId}`);
+
+            // Salvar/atualizar vídeos no banco
+            for (const video of videos) {
+                // Parse duration ISO 8601 (PT1M30S → segundos)
+                let durationSec = null;
+                if (video.duration) {
+                    const match = video.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+                    if (match) {
+                        const hours = parseInt(match[1] || '0');
+                        const minutes = parseInt(match[2] || '0');
+                        const seconds = parseInt(match[3] || '0');
+                        durationSec = hours * 3600 + minutes * 60 + seconds;
+                    }
+                }
+
+                await prisma.youtubeVideo.upsert({
+                    where: {
+                        youtubeVideoId: video.id
+                    },
+                    update: {
+                        titleSnapshot: video.title,
+                        durationSec,
+                        publishedAt: video.publishedAt ? new Date(video.publishedAt) : null,
+                        updatedAt: new Date()
+                    },
+                    create: {
+                        id: `${channelId}_${video.id}`,
+                        channelId,
+                        youtubeVideoId: video.id,
+                        titleSnapshot: video.title,
+                        durationSec,
+                        publishedAt: video.publishedAt ? new Date(video.publishedAt) : null
+                    }
+                });
+
+                // Salvar métricas em YoutubeVideoMetrics
+                await prisma.youtubeVideoMetrics.create({
+                    data: {
+                        videoId: `${channelId}_${video.id}`,
+                        date: new Date(),
+                        views: video.statistics.viewCount,
+                        likes: video.statistics.likeCount,
+                        comments: video.statistics.commentCount,
+                        source: 'API'
+                    }
+                });
+            }
+
+            console.log(`[ChannelService] Successfully synced ${videos.length} videos`);
+        } catch (error) {
+            console.error('[ChannelService] Failed to sync videos:', error);
+            // Não falhar a operação inteira se só os vídeos falharem
+        }
+
         return this.serialize(updated);
     }
 
