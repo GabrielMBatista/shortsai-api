@@ -7,7 +7,8 @@ import { commonSchemas } from '../validation';
 export const createProjectSchema = z.object({
     topic: z.string().min(1).max(500),
     style: z.string().min(1).max(100),
-    language: z.string().length(2).default('en'),
+    // ✅ Aceita códigos de idioma como 'en', 'pt-BR', 'es', etc
+    language: z.enum(['en', 'pt-BR', 'es', 'fr', 'de', 'it', 'ja', 'ko']).default('en'),
     duration: z.number().int().min(15).max(180).optional(),
     channelId: commonSchemas.uuid.optional(),
     personaId: commonSchemas.uuid.optional(),
@@ -23,8 +24,10 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export const updateProjectSchema = z.object({
     topic: z.string().min(1).max(500).optional(),
     style: z.string().min(1).max(100).optional(),
-    language: z.string().length(2).optional(),
-    status: z.enum(['DRAFT', 'IN_PROGRESS', 'COMPLETED', 'FAILED']).optional(),
+    // ✅ Aceita códigos de idioma como 'en', 'pt-BR', 'es', etc
+    language: z.enum(['en', 'pt-BR', 'es', 'fr', 'de', 'it', 'ja', 'ko']).optional(),
+    // ✅ Alinhado com Prisma enum ProjectStatus: draft | generating | completed | failed | paused
+    status: z.enum(['draft', 'generating', 'completed', 'failed', 'paused']).optional(),
     folderId: commonSchemas.uuid.nullable().optional(),
     tags: z.array(z.string()).max(10).optional(),
     isArchived: z.boolean().optional(),
@@ -39,7 +42,8 @@ export const projectQuerySchema = z.object({
     userId: commonSchemas.uuid.optional(),
     channelId: commonSchemas.uuid.optional(),
     folderId: commonSchemas.uuid.optional(),
-    status: z.enum(['DRAFT', 'IN_PROGRESS', 'COMPLETED', 'FAILED']).optional(),
+    // ✅ Alinhado com Prisma enum ProjectStatus: draft | generating | completed | failed | paused
+    status: z.enum(['draft', 'generating', 'completed', 'failed', 'paused']).optional(),
     isArchived: z.coerce.boolean().optional(),
     includeScenes: z.coerce.boolean().default(false),
     ...commonSchemas.pagination.shape,
