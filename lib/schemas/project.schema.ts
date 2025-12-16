@@ -5,7 +5,7 @@ import { commonSchemas } from '../validation';
  * Schema for creating a new project
  */
 export const createProjectSchema = z.object({
-    topic: z.string().min(1).max(500),
+    topic: z.string().min(1).max(500000), // ✅ Aceita planejamentos mensais (3 semanas × 21 projetos)
     style: z.string().min(1).max(100),
     // ✅ Aceita códigos de idioma como 'en', 'pt-BR', 'es', etc
     language: z.enum(['en', 'pt-BR', 'es', 'fr', 'de', 'it', 'ja', 'ko']).default('en'),
