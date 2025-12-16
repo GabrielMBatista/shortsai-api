@@ -231,13 +231,95 @@ VOCÊ ESTÁ USANDO A PERSONA: "${persona.name}"
                     const normalized = normalizeScriptFormat(json, topic);
 
                     console.log(`[ScriptService] ✅ Normalized successfully: ${normalized.scenes.length} scenes`);
+                    console.log(`[ScriptService] Metadados: ${normalized.videoTitle} | ${normalized.videoDescription?.substring(0, 50)}...`);
+
+                    // 🎯 GERAÇÃO AUTOMÁTICA DE METADADOS SE NECESSÁRIO
+                    const needsMetadataGeneration =
+                        !normalized.videoTitle ||
+                        normalized.videoTitle.trim() === "" ||
+                        normalized.videoTitle === "Untitled" ||
+                        !normalized.videoDescription ||
+                        normalized.videoDescription.trim() === "";
+
+                    let finalVideoTitle = normalized.videoTitle;
+                    let finalVideoDescription = normalized.videoDescription;
+                    let finalShortsHashtags = normalized.shortsHashtags;
+                    let finalTiktokText = normalized.tiktokText;
+                    let finalTiktokHashtags = normalized.tiktokHashtags;
+
+                    if (needsMetadataGeneration) {
+                        console.log('[ScriptService] ⚡ Metadados ausentes, gerando automaticamente...');
+
+                        try {
+                            const { MetadataService } = await import('./metadata-service');
+
+                            // Construir conteúdo do vídeo para análise
+                            const videoContent = normalized.scenes
+                                .map((s: any) => s.narration)
+                                .join(' ')
+                                .substring(0, 1000); // Limitar para não exceder tokens
+
+                            // Gerar metadados otimizados
+                            const generatedMetadata = await MetadataService.generateOptimizedMetadata(
+                                userId,
+                                topic, // Usa o prompt original como base
+                                videoContent,
+                                options?.channelId,
+                                language
+                            );
+
+                            // Usar metadados gerados
+                            finalVideoTitle = generatedMetadata.optimizedTitle;
+                            finalVideoDescription = generatedMetadata.optimizedDescription;
+                            finalShortsHashtags = generatedMetadata.shortsHashtags;
+                            finalTiktokText = generatedMetadata.tiktokText;
+                            finalTiktokHashtags = generatedMetadata.tiktokHashtags;
+
+                            console.log(`[ScriptService] ✅ Metadados gerados automaticamente:`);
+                            console.log(`   Título: "${finalVideoTitle}"`);
+                            console.log(`   Hashtags: ${finalShortsHashtags.join(', ')}`);
+                        } catch (metadataError) {
+                            console.error('[ScriptService] ⚠️ Falha ao gerar metadados automaticamente:', metadataError);
+
+                            // Fallback final se geração automática falhar
+                            finalVideoTitle = normalized.videoTitle || topic;
+                            finalVideoDescription = normalized.videoDescription || `Vídeo sobre: ${topic}`;
+                            finalShortsHashtags = normalized.shortsHashtags?.length > 0
+                                ? normalized.shortsHashtags
+                                : ['#shorts', '#viral'];
+                            finalTiktokHashtags = normalized.tiktokHashtags?.length > 0
+                                ? normalized.tiktokHashtags
+                                : ['#fyp', '#viral'];
+
+                            console.log('[ScriptService] ℹ️ Usando fallback simples');
+                        }
+                    } else {
+                        console.log('[ScriptService] ✅ Metadados da persona estão completos');
+                    }
+
+                    // 🛡️ GARANTIA FINAL DE METADADOS VÁLIDOS
+                    const safeVideoTitle = finalVideoTitle && finalVideoTitle.trim() !== ""
+                        ? finalVideoTitle
+                        : topic;
+
+                    const safeVideoDescription = finalVideoDescription && finalVideoDescription.trim() !== ""
+                        ? finalVideoDescription
+                        : `Vídeo sobre: ${topic}`;
+
+                    const safeShortsHashtags = Array.isArray(finalShortsHashtags) && finalShortsHashtags.length > 0
+                        ? finalShortsHashtags
+                        : ['#shorts', '#viral'];
+
+                    const safeTiktokHashtags = Array.isArray(finalTiktokHashtags) && finalTiktokHashtags.length > 0
+                        ? finalTiktokHashtags
+                        : ['#fyp', '#viral'];
 
                     return {
-                        videoTitle: normalized.videoTitle,
-                        videoDescription: normalized.videoDescription,
-                        shortsHashtags: normalized.shortsHashtags,
-                        tiktokText: normalized.tiktokText,
-                        tiktokHashtags: normalized.tiktokHashtags,
+                        videoTitle: safeVideoTitle,
+                        videoDescription: safeVideoDescription,
+                        shortsHashtags: safeShortsHashtags,
+                        tiktokText: finalTiktokText || "",
+                        tiktokHashtags: safeTiktokHashtags,
                         scenes: normalized.scenes,
                         metadata: normalized.metadata // Preservar metadados originais
                     };
