@@ -1,7 +1,8 @@
 export class RequestQueue {
     private queue: (() => Promise<void>)[] = [];
     private running = 0;
-    private maxConcurrent = 3;
+    // Reduce concurrency to 1 to strictly adhere to Gemini Video (Veo) rate limits (e.g. 2 RPM)
+    private maxConcurrent = 1;
 
     async add<T>(task: () => Promise<T>): Promise<T> {
         return new Promise((resolve, reject) => {
@@ -37,7 +38,9 @@ export const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve,
 export async function retryWithBackoff<T>(
     fn: () => Promise<T>,
     retries = 3,
-    baseDelay = 2000
+    // Increase backoff significantly for quota errors (15s base). 
+    // Gemini quotas are per minute, so 2s is useless.
+    baseDelay = 15000
 ): Promise<T> {
     try {
         return await fn();
