@@ -162,7 +162,7 @@ RETORNE APENAS JSON NO FORMATO:
         // 3. Generate optimized metadata
         const result = await executeRequest(isSystem, async () => {
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
+                model: "gemini-1.5-flash",
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
                 config: {
                     responseMimeType: "application/json",
@@ -171,7 +171,7 @@ RETORNE APENAS JSON NO FORMATO:
                 }
             });
 
-            await trackUsage(userId, 'gemini', 'gemini-2.5-flash', 'text');
+            await trackUsage(userId, 'gemini', 'gemini-1.5-flash', 'text');
 
             const text = response.candidates?.[0]?.content?.parts?.[0]?.text;
             if (!text) throw new Error("No metadata generated");
