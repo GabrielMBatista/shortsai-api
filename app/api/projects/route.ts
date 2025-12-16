@@ -171,6 +171,7 @@ export async function POST(request: NextRequest) {
                 // Determine content for AI analysis
                 let videoContentForAI = topic;
                 let videoTitleForAI = generated_title || topic;
+                let foundSpecificTitle = false;
 
                 // If topic is JSON (from batch import), extract relevant text
                 if (topic && topic.trim().startsWith('{')) {
@@ -187,15 +188,27 @@ export async function POST(request: NextRequest) {
                             videoContentForAI = `${hook} ${narrations}`.trim();
                         }
 
-                        videoTitleForAI = scriptMetadata.titulo || scriptMetadata.title || videoTitleForAI;
+                        // Robust Title Extraction
+                        const extractedTitle = scriptMetadata.titulo || scriptMetadata.title || scriptMetadata.videoTitle || scriptMetadata.projectTitle;
+                        if (extractedTitle) {
+                            videoTitleForAI = extractedTitle;
+                            foundSpecificTitle = true;
+                            console.log(`[Async] Extracted title from JSON: "${videoTitleForAI}"`);
+                        }
                     } catch (e) {
                         // Keep original string if parse fails
+                        console.warn(`[Async] Failed to parse topic JSON for Project ${project.id}`);
                     }
                 }
 
-                // Call Metadata Service (Internal)
+                // 3. Call Metadata Service (Internal) with Rich Context
                 const { MetadataService } = await import('@/lib/ai/services/metadata-service');
-                reqLogger.info(`[Async] Starting metadata generation for Project ${project.id}`);
+
+                // Log for debugging (temporary)
+                // console.log(`[Async] Generating metadata for Project ${project.id}. Inputs: Title="${videoTitleForAI}", ContentLength=${videoContentForAI.length}`);
+
+                // Force AI generation - do not save raw JSON title to 'generated_*' fields prematurely.
+                // The UI handles the waiting state ("⏳") or falls back to 'topic' if these remain null.
 
                 await MetadataService.generateOptimizedMetadata(
                     user_id,
@@ -203,10 +216,10 @@ export async function POST(request: NextRequest) {
                     videoContentForAI,
                     channel_id || undefined,
                     language || 'pt-BR',
-                    project.id // Pass project ID to update it directly
+                    project.id // Pass project ID to update it directly in DB
                 );
 
-                reqLogger.info(`[Async] Metadata generation completed for Project ${project.id}`);
+                // reqLogger.info(`[Async] Metadata generation completed for Project ${project.id}`);
             } catch (bgError) {
                 console.error(`[Async] Background metadata generation failed for Project ${project.id}:`, bgError);
             }
