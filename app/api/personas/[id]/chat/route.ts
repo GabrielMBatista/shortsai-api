@@ -85,21 +85,63 @@ export async function POST(
             });
         }
 
-        // Simple chat (synchronous)
-        const response = await ChatService.chatWithPersona(
-            session.user.id,
-            personaId,
-            message,
-            history || [],
-            channelId,
-            language,
-            voice,
-            chatId
-        );
+        // Simple chat (synchronous) with retry on 503
+        const maxRetries = 3;
+        const baseDelay = 2000; // 2 segundos
 
-        return NextResponse.json({ response });
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                const response = await ChatService.chatWithPersona(
+                    session.user.id,
+                    personaId,
+                    message,
+                    history || [],
+                    channelId,
+                    language,
+                    voice,
+                    chatId
+                );
+
+                return NextResponse.json({ response });
+            } catch (error: any) {
+                const is503 = error.message?.includes('503') ||
+                    error.message?.includes('overloaded') ||
+                    error.message?.includes('UNAVAILABLE');
+
+                // Se é 503 e ainda tem tentativas, retry com backoff
+                if (is503 && attempt < maxRetries) {
+                    const delay = baseDelay * Math.pow(2, attempt); // Exponential backoff
+                    console.log(`[POST /personas/${personaId}/chat] 503 error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue; // Próxima tentativa
+                }
+
+                // Se não é 503 ou acabaram as tentativas, throw
+                throw error;
+            }
+        }
+
+        // Fallback (nunca deve chegar aqui)
+        throw new Error('Max retries reached');
     } catch (error: any) {
         console.error('[POST /api/personas/[id]/chat] Error:', error);
+
+        // Tratamento específico de erro 503
+        const is503 = error.message?.includes('503') ||
+            error.message?.includes('overloaded') ||
+            error.message?.includes('UNAVAILABLE');
+
+        if (is503) {
+            return NextResponse.json(
+                {
+                    error: 'O modelo de IA está temporariamente sobrecarregado. Tente novamente em alguns segundos.',
+                    code: 'MODEL_OVERLOADED',
+                    retryAfter: 5
+                },
+                { status: 503 }
+            );
+        }
+
         return NextResponse.json(
             { error: error.message || 'Failed to chat with persona' },
             { status: 500 }

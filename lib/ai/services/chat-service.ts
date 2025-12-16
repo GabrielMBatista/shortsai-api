@@ -150,38 +150,80 @@ Current Date: ${currentDate}
 
         const finalSystemInstruction = `${channelContext}\n\n${baseSystemInstruction}\n\n${jsonEnforcement}`;
 
-        // 5. Execute Request
+        // 5. Execute Request with Model Fallback
         const startTime = Date.now();
         let success = false;
         let error: any = null;
 
+        // Lista de modelos para tentar (ordem de preferência)
+        const modelsToTry = [
+            { name: 'gemini-2.5-flash', maxTokens: 65536, reason: 'Melhor custo/benefício' },
+            { name: 'gemini-1.5-flash', maxTokens: 8192, reason: 'Versão mais estável' },
+            { name: 'gemini-1.5-pro', maxTokens: 8192, reason: 'Maior disponibilidade' }
+        ];
+
+        let lastError: any = null;
+        let result: string | null = null;
+
+        for (const model of modelsToTry) {
+            try {
+                console.log(`[ChatService] Trying model: ${model.name} (${model.reason})`);
+
+                result = await executeRequest(isSystem, async () => {
+                    const response = await ai.models.generateContent({
+                        model: model.name,
+                        contents: [
+                            ...history,
+                            { role: 'user', parts: [{ text: message }] }
+                        ],
+                        config: {
+                            systemInstruction: finalSystemInstruction,
+                            temperature: persona.temperature,
+                            topP: persona.topP,
+                            topK: persona.topK,
+                            maxOutputTokens: model.maxTokens
+                        }
+                    });
+
+                    await trackUsage(userId, 'gemini', model.name, 'text');
+
+                    const responseText = response.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!responseText) throw new Error("No response generated");
+
+                    return responseText;
+                }, userId);
+
+                console.log(`[ChatService] ✅ Success with model: ${model.name}`);
+                success = true;
+                break; // Sucesso, sai do loop
+
+            } catch (e: any) {
+                lastError = e;
+
+                // Verificar se é erro 503 (sobrecarregado)
+                const is503 = e.message?.includes('503') ||
+                    e.message?.includes('overloaded') ||
+                    e.message?.includes('UNAVAILABLE');
+
+                if (is503) {
+                    console.log(`[ChatService] ⚠️ Model ${model.name} is overloaded (503). Trying next model...`);
+                    continue; // Tenta próximo modelo
+                }
+
+                // Se não é 503, throw imediatamente (erro real)
+                error = e;
+                throw e;
+            }
+        }
+
+        // Se não teve sucesso, todos os modelos falharam
+        if (!success || !result) {
+            console.error(`[ChatService] ❌ All models failed. Last error:`, lastError);
+            error = lastError;
+            throw new Error(`Todos os modelos de IA estão temporariamente indisponíveis. Tente novamente em alguns instantes.`);
+        }
+
         try {
-            const result = await executeRequest(isSystem, async () => {
-                const response = await ai.models.generateContent({
-                    model: "gemini-2.5-flash",
-                    contents: [
-                        ...history,
-                        { role: 'user', parts: [{ text: message }] }
-                    ],
-                    config: {
-                        systemInstruction: finalSystemInstruction,
-                        temperature: persona.temperature,
-                        topP: persona.topP,
-                        topK: persona.topK,
-                        maxOutputTokens: 65536 // Force high limit for Gemini 2.0 Flash (supports huge output)
-                    }
-                });
-
-                await trackUsage(userId, 'gemini', 'gemini-2.0-flash-exp', 'text');
-
-                const responseText = response.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!responseText) throw new Error("No response generated");
-
-                return responseText;
-            }, userId);
-
-            success = true;
-
             // 7. Salvar mensagens no histórico do chat (se chatId fornecido)
             if (chatId && success) {
                 try {
