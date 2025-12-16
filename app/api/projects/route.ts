@@ -163,6 +163,55 @@ export async function POST(request: NextRequest) {
         reqLogger.info({ projectId: project.id, duration }, `Project created in ${duration}ms`);
 
         broadcastAdminUpdate('PROJECT_CREATED', mappedProject);
+
+        // 🚀 ASYNC BACKGROUND: Generate optimized metadata if not provided
+        // Fire-and-forget: The server continues processing after response is sent (Node.js event loop)
+        (async () => {
+            try {
+                // Determine content for AI analysis
+                let videoContentForAI = topic;
+                let videoTitleForAI = generated_title || topic;
+
+                // If topic is JSON (from batch import), extract relevant text
+                if (topic && topic.trim().startsWith('{')) {
+                    try {
+                        const parsed = JSON.parse(topic);
+                        const scriptMetadata = parsed.scriptMetadata || parsed; // Fallback
+
+                        // Extract rich content from Scenes if available
+                        if (scriptMetadata.scenes && Array.isArray(scriptMetadata.scenes)) {
+                            const narrations = scriptMetadata.scenes
+                                .map((s: any) => s.narration || s.text || "")
+                                .join(" ");
+                            const hook = scriptMetadata.hook_falado || "";
+                            videoContentForAI = `${hook} ${narrations}`.trim();
+                        }
+
+                        videoTitleForAI = scriptMetadata.titulo || scriptMetadata.title || videoTitleForAI;
+                    } catch (e) {
+                        // Keep original string if parse fails
+                    }
+                }
+
+                // Call Metadata Service (Internal)
+                const { MetadataService } = await import('@/lib/ai/services/metadata-service');
+                reqLogger.info(`[Async] Starting metadata generation for Project ${project.id}`);
+
+                await MetadataService.generateOptimizedMetadata(
+                    user_id,
+                    videoTitleForAI,
+                    videoContentForAI,
+                    channel_id || undefined,
+                    language || 'pt-BR',
+                    project.id // Pass project ID to update it directly
+                );
+
+                reqLogger.info(`[Async] Metadata generation completed for Project ${project.id}`);
+            } catch (bgError) {
+                console.error(`[Async] Background metadata generation failed for Project ${project.id}:`, bgError);
+            }
+        })();
+
         return NextResponse.json(mappedProject, { headers: { 'X-Request-ID': requestId } });
     } catch (error) {
         return handleError(error, requestId);

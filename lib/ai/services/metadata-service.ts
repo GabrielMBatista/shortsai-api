@@ -22,7 +22,8 @@ export class MetadataService {
         videoTitle: string,
         videoContent: string,
         channelId?: string,
-        language: string = 'pt-BR'
+        language: string = 'pt-BR',
+        projectId?: string
     ): Promise<{
         optimizedTitle: string;
         optimizedDescription: string;
@@ -32,6 +33,7 @@ export class MetadataService {
     }> {
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId);
 
+        // ... (existing channel logic omitted for brevity as it is before prompt generation)
         // 1. Fetch channel performance data if available
         let channelContext = '';
         if (channelId) {
@@ -181,7 +183,7 @@ RETORNE APENAS JSON NO FORMATO:
                 const json = JSON.parse(cleanText);
 
                 // Validate and sanitize
-                return {
+                const metadata = {
                     optimizedTitle: (json.optimizedTitle || videoTitle).replace(/#\w+/g, '').trim(),
                     optimizedDescription: json.optimizedDescription || '',
                     shortsHashtags: Array.isArray(json.shortsHashtags)
@@ -192,6 +194,23 @@ RETORNE APENAS JSON NO FORMATO:
                         ? json.tiktokHashtags.slice(0, 5).map((t: string) => t.startsWith('#') ? t : `#${t}`)
                         : ['#fyp', '#viral', '#foryou', '#trending', '#explore']
                 };
+
+                // Saving directly if projectId is provided
+                if (projectId) {
+                    await prisma.project.update({
+                        where: { id: projectId },
+                        data: {
+                            generated_title: metadata.optimizedTitle,
+                            generated_description: metadata.optimizedDescription,
+                            generated_shorts_hashtags: metadata.shortsHashtags,
+                            generated_tiktok_text: metadata.tiktokText,
+                            generated_tiktok_hashtags: metadata.tiktokHashtags
+                        }
+                    });
+                    console.log(`[MetadataService] Updated project ${projectId} with metadata`);
+                }
+
+                return metadata;
             } catch (e) {
                 console.error("[MetadataService] JSON Parse Error", text);
                 throw new Error("Failed to parse metadata format.");
