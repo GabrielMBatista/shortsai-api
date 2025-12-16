@@ -158,8 +158,7 @@ Current Date: ${currentDate}
         // Lista de modelos para tentar (ordem de preferência)
         const modelsToTry = [
             { name: 'gemini-2.5-flash', maxTokens: 65536, reason: 'Melhor custo/benefício' },
-            { name: 'gemini-1.5-flash', maxTokens: 8192, reason: 'Versão mais estável' },
-            { name: 'gemini-1.5-pro', maxTokens: 8192, reason: 'Maior disponibilidade' }
+            { name: 'gemini-2.0-flash-exp', maxTokens: 32768, reason: 'Versão experimental' }
         ];
 
         let lastError: any = null;
