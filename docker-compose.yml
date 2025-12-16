@@ -58,7 +58,9 @@ services:
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://srv1161960.hstgr.cloud}
       FRONTEND_URL: ${FRONTEND_URL:-https://srv1161960.hstgr.cloud}
       AUTH_SECRET: ${AUTH_SECRET:-supersecret}
-      AUTH_URL: ${AUTH_URL:-http://srv1161960.hstgr.cloud:3333/api/auth}
+      # ⚠️ IMPORTANTE: AUTH_URL deve usar HTTPS (através do Nginx), não HTTP:3333
+      # O Google OAuth redireciona para a URL pública (HTTPS), não para o container
+      AUTH_URL: ${AUTH_URL:-https://srv1161960.hstgr.cloud/api/auth}
       QUEUE_PATH: /app/data/queue.json
     ports:
       - "3333:3333"
