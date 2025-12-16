@@ -40,14 +40,30 @@ export async function GET(
             take: limit
         });
 
+        // Map to frontend VideoAnalytics format
+        const mapped = videos.map(v => ({
+            id: v.id,
+            title: v.title,
+            url: v.url,
+            thumbnail: v.thumbnail || undefined,
+            description: v.description || undefined,
+            publishedAt: v.publishedAt?.toISOString(),
+            tags: v.tags || [],
+            stats: {
+                views: v.views || 0,
+                likes: v.likes || 0,
+                comments: v.comments || 0
+            }
+        }));
+
         const duration = Date.now() - startTime;
         reqLogger.info(
-            { channelId: id, videoCount: videos.length, duration },
-            `Videos retrieved in ${duration}ms`
+            { channelId: id, videoCount: mapped.length, duration },
+            `Videos retrieved and mapped in ${duration}ms`
         );
 
         return NextResponse.json(
-            { videos, total: videos.length },
+            { videos: mapped, total: mapped.length },
             { headers: { 'X-Request-ID': requestId } }
         );
     } catch (error) {
