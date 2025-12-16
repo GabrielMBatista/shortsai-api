@@ -26,22 +26,21 @@ export async function POST(
         const reqLogger = createRequestLogger(requestId, session.user.id);
         const { id } = await params;
 
-        reqLogger.info({ channelId: id }, 'Syncing channel');
+        reqLogger.info({ channelId: id }, 'Syncing channel stats from YouTube');
 
         const channel = await prisma.channel.findUnique({ where: { id } });
         if (!channel) throw new NotFoundError('Channel', id);
         if (channel.userId !== session.user.id) throw new ForbiddenError('Access denied');
 
-        await prisma.channel.update({
-            where: { id },
-            data: { lastSyncedAt: new Date() }
-        });
+        // ✅ Sincronizar dados reais do YouTube
+        const { ChannelService } = await import('@/lib/channels/channel-service');
+        const updatedChannel = await ChannelService.syncChannelStats(id);
 
         const duration = Date.now() - startTime;
-        reqLogger.info({ channelId: id, duration }, `Channel synced in ${duration}ms`);
+        reqLogger.info({ channelId: id, duration }, `Channel synced successfully in ${duration}ms`);
 
         return NextResponse.json(
-            { success: true, message: 'Channel synced successfully' },
+            updatedChannel,
             { headers: { 'X-Request-ID': requestId } }
         );
     } catch (error) {

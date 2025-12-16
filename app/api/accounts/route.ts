@@ -12,10 +12,18 @@ export async function GET() {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        // Buscar contas Google E Google-Channels (com scope YouTube)
+        // Priorizar google-channels pois tem acesso ao YouTube
         const accounts = await prisma.account.findMany({
             where: {
                 userId: session.user.id,
-                provider: 'google'
+                provider: {
+                    in: ['google', 'google-channels']
+                },
+                // Apenas contas com refresh_token válido
+                refresh_token: {
+                    not: null
+                }
             },
             select: {
                 id: true,
@@ -23,6 +31,10 @@ export async function GET() {
                 providerAccountId: true,
                 refresh_token: true,
                 access_token: true
+            },
+            // Priorizar google-channels (com YouTube scope)
+            orderBy: {
+                provider: 'desc' // 'google-channels' vem antes de 'google'
             }
         });
 
