@@ -149,8 +149,54 @@ export async function POST(request: NextRequest) {
             try {
                 const parsed = JSON.parse(safeGeneratedTitle);
                 const extracted = findTitleDeep(parsed);
-                if (extracted) safeGeneratedTitle = extracted;
-            } catch (e) { /* Ignore */ }
+                if (extracted) {
+                    safeGeneratedTitle = extracted;
+                } else {
+                    // If JSON parsed but no title found, force undefined/null so it doesn't save the JSON blob
+                    safeGeneratedTitle = undefined;
+                }
+            } catch (e) {
+                // If parse fails, assume it's garbage JSON and don't save it as a title
+                safeGeneratedTitle = undefined;
+            }
+        }
+
+        // 🛡️ Sanitize Description & Hashtags
+        let safeGeneratedDescription = generated_description;
+        if (typeof safeGeneratedDescription === 'string' && (safeGeneratedDescription.trim().startsWith('{') || safeGeneratedDescription.trim().startsWith('['))) {
+            try {
+                const parsed = JSON.parse(safeGeneratedDescription);
+                // findValueDeep-like inline logic
+                const findDesc = (obj: any, d = 0): string | null => {
+                    if (!obj || typeof obj !== 'object' || d > 3) return null;
+                    const keys = ['description', 'generatedDescription', 'desc', 'generated_description', 'resumo'];
+                    for (const k of keys) if (obj[k] && typeof obj[k] === 'string') return obj[k];
+                    for (const k in obj) { if (typeof obj[k] === 'object') { const f = findDesc(obj[k], d + 1); if (f) return f; } }
+                    return null;
+                };
+                const extracted = findDesc(parsed);
+                if (extracted) safeGeneratedDescription = extracted;
+                else safeGeneratedDescription = undefined; // Don't save raw
+            } catch (e) { safeGeneratedDescription = undefined; }
+        }
+
+        let safeHashtags = generated_shorts_hashtags;
+        // If hashtags came in as a JSON string (weird but possible), parse it
+        if (typeof safeHashtags === 'string' && (safeHashtags.trim().startsWith('{') || safeHashtags.trim().startsWith('['))) {
+            try {
+                const parsed = JSON.parse(safeHashtags);
+                const findTags = (obj: any, d = 0): string[] | null => {
+                    if (!obj || typeof obj !== 'object' || d > 3) return null;
+                    if (Array.isArray(obj)) return obj; // Found array root
+                    const keys = ['hashtags', 'generated_shorts_hashtags', 'tags', 'keywords'];
+                    for (const k of keys) if (obj[k] && Array.isArray(obj[k])) return obj[k];
+                    for (const k in obj) { if (typeof obj[k] === 'object') { const f = findTags(obj[k], d + 1); if (f) return f; } }
+                    return null;
+                };
+                const extracted = findTags(parsed);
+                if (extracted) safeHashtags = extracted;
+                else safeHashtags = [];
+            } catch (e) { safeHashtags = []; }
         }
 
         const project = await prisma.project.create({
@@ -168,8 +214,8 @@ export async function POST(request: NextRequest) {
                 duration_config: duration_config || Prisma.JsonNull,
                 status: 'draft', folder_id,
                 generated_title: safeGeneratedTitle, // Use sanitized title
-                generated_description,
-                generated_shorts_hashtags: generated_shorts_hashtags || [],
+                generated_description: safeGeneratedDescription,
+                generated_shorts_hashtags: safeHashtags || [],
                 generated_tiktok_text, generated_tiktok_hashtags: generated_tiktok_hashtags || [],
                 script_metadata: script_metadata || Prisma.JsonNull,
                 channel_id: channel_id || null, persona_id: effectivePersonaId || null,
