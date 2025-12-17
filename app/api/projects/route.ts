@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
         // 🛡️ Sanitize Title: Use extracted title if generated_title is a JSON string
         // Helper for recursive search (Inlined from projectUtils matching logic)
         const findTitleDeep = (obj: any, depth: number = 0): string | null => {
-            if (!obj || typeof obj !== 'object' || depth > 3) return null;
+            if (!obj || typeof obj !== 'object' || depth > 8) return null;
             const priorityKeys = ['titulo', 'tittle', 'title', 'projectTitle', 'videoTitle', 'scriptTitle', 'id_da_semana', 'tema_dia'];
             for (const key of priorityKeys) {
                 if (obj[key] && typeof obj[key] === 'string' && obj[key].trim().length > 0) return obj[key];
