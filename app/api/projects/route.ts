@@ -124,15 +124,33 @@ export async function POST(request: NextRequest) {
         const safeTtsProvider = tts_provider?.trim() || 'gemini';
 
         // 🛡️ Sanitize Title: Use extracted title if generated_title is a JSON string
+        // Helper for recursive search (Inlined from projectUtils matching logic)
+        const findTitleDeep = (obj: any, depth: number = 0): string | null => {
+            if (!obj || typeof obj !== 'object' || depth > 3) return null;
+            const priorityKeys = ['titulo', 'tittle', 'title', 'projectTitle', 'videoTitle', 'scriptTitle', 'id_da_semana', 'tema_dia'];
+            for (const key of priorityKeys) {
+                if (obj[key] && typeof obj[key] === 'string' && obj[key].trim().length > 0) return obj[key];
+            }
+            const fallbackKeys = ['name', 'topic', 'subject'];
+            for (const key of fallbackKeys) {
+                if (obj[key] && typeof obj[key] === 'string' && obj[key].trim().length > 0) return obj[key];
+            }
+            for (const key in obj) {
+                if (typeof obj[key] === 'object') {
+                    const found = findTitleDeep(obj[key], depth + 1);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+
         let safeGeneratedTitle = generated_title;
         if (typeof safeGeneratedTitle === 'string' && (safeGeneratedTitle.trim().startsWith('{') || safeGeneratedTitle.trim().startsWith('['))) {
             try {
                 const parsed = JSON.parse(safeGeneratedTitle);
-                // Priority Extraction
-                safeGeneratedTitle = parsed.titulo || parsed.title || parsed.projectTitle || parsed.videoTitle || parsed.scriptTitle || parsed.name || parsed.id_da_semana || safeGeneratedTitle;
-            } catch (e) {
-                // Ignore parse error, keep original
-            }
+                const extracted = findTitleDeep(parsed);
+                if (extracted) safeGeneratedTitle = extracted;
+            } catch (e) { /* Ignore */ }
         }
 
         const project = await prisma.project.create({
