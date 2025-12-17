@@ -123,6 +123,18 @@ export async function POST(request: NextRequest) {
         const safeVoiceName = voice_name?.trim() || undefined;
         const safeTtsProvider = tts_provider?.trim() || 'gemini';
 
+        // 🛡️ Sanitize Title: Use extracted title if generated_title is a JSON string
+        let safeGeneratedTitle = generated_title;
+        if (typeof safeGeneratedTitle === 'string' && (safeGeneratedTitle.trim().startsWith('{') || safeGeneratedTitle.trim().startsWith('['))) {
+            try {
+                const parsed = JSON.parse(safeGeneratedTitle);
+                // Priority Extraction
+                safeGeneratedTitle = parsed.titulo || parsed.title || parsed.projectTitle || parsed.videoTitle || parsed.scriptTitle || parsed.name || parsed.id_da_semana || safeGeneratedTitle;
+            } catch (e) {
+                // Ignore parse error, keep original
+            }
+        }
+
         const project = await prisma.project.create({
             data: {
                 user_id,
@@ -136,7 +148,9 @@ export async function POST(request: NextRequest) {
                 include_music, bg_music_prompt,
                 bg_music_status: include_music ? 'pending' : null,
                 duration_config: duration_config || Prisma.JsonNull,
-                status: 'draft', folder_id, generated_title, generated_description,
+                status: 'draft', folder_id,
+                generated_title: safeGeneratedTitle, // Use sanitized title
+                generated_description,
                 generated_shorts_hashtags: generated_shorts_hashtags || [],
                 generated_tiktok_text, generated_tiktok_hashtags: generated_tiktok_hashtags || [],
                 script_metadata: script_metadata || Prisma.JsonNull,
@@ -170,7 +184,7 @@ export async function POST(request: NextRequest) {
             try {
                 // Determine content for AI analysis
                 let videoContentForAI = topic;
-                let videoTitleForAI = generated_title || topic;
+                let videoTitleForAI = safeGeneratedTitle || topic;
                 let foundSpecificTitle = false;
 
                 // If topic is JSON (from batch import), extract relevant text
