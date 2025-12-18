@@ -244,6 +244,14 @@ export async function PATCH(
             `Project updated successfully in ${duration}ms`
         );
 
+        // 🚀 Real-time sync: Notify clients about project-level updates
+        const { broadcastProjectUpdate } = await import('@/lib/sse/sse-service');
+        broadcastProjectUpdate(projectId, {
+            type: 'project_status_update', // Re-using this type as it triggers project state refresh in many clients
+            status: project.status, // Current status
+            ...rest // Includes other updated fields like voice_name, language etc
+        });
+
         return NextResponse.json(mappedProject, {
             headers: { 'X-Request-ID': requestId },
         });

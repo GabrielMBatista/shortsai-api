@@ -64,6 +64,19 @@ export async function PATCH(
             include: { characters: true } // Return updated characters
         });
 
+        // 🚀 Real-time sync: Notify all connected clients about the update
+        const { broadcastProjectUpdate } = await import('@/lib/sse/sse-service');
+        broadcastProjectUpdate(scene.project_id, {
+            type: 'scene_update',
+            sceneId: scene.id,
+            ...updateData,
+            // Add camelCase versions to match frontend expectation if needed
+            // although WorkflowClient handleSceneUpdate now handles both
+            visualDescription: scene.visual_description,
+            sceneNumber: scene.scene_number,
+            characterIds: characterIds // Already in correct format if provided
+        });
+
         return NextResponse.json(scene);
     } catch (error: any) {
         console.error('Error updating scene:', error);
