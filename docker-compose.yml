@@ -77,34 +77,6 @@ services:
     volumes:
       - shortsai_data:/app/data
 
-  # ==============================
-  # WORKER (Python Video Renderer)
-  # ==============================
-  worker:
-    container_name: shortsai-worker
-    build:
-      context: ./worker
-      dockerfile: Dockerfile
-    env_file:
-      - .env
-    environment:
-      # Map Queue Path to shared volume
-      QUEUE_PATH_WORKER: /app/data/queue.json
-      # R2 Config (Matches .env names)
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
-      R2_BUCKET_NAME: ${R2_BUCKET_NAME}
-      NEXT_PUBLIC_STORAGE_URL: ${NEXT_PUBLIC_STORAGE_URL}
-      # Optional explicit endpoint override
-      R2_ENDPOINT: ${R2_ENDPOINT:-}
-    volumes:
-      - shortsai_data:/app/data
-    restart: always
-    depends_on:
-      - shortsai-api # Wait for API to maybe create the queue file? Or independent.
-    networks:
-      - shortsai-network
 
 volumes:
   shortsai_data:
