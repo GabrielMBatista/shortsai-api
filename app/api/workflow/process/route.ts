@@ -45,14 +45,22 @@ export async function POST(request: Request) {
 
         try {
             if (reuseStrategy === 'auto_reuse') {
-                const searchDesc = task.action === 'generate_audio' ? (task.params as any).text : (task.params as any).prompt;
+                let searchDesc = task.action === 'generate_audio' ? (task.params as any).text : (task.params as any).prompt;
                 const searchType = task.action === 'generate_image' ? 'IMAGE' : (task.action === 'generate_audio' ? 'AUDIO' : (task.action === 'generate_video' ? 'VIDEO' : null));
 
+                // Fallback para descrição da cena se o prompt estiver vazio
+                if (!searchDesc && task.sceneId) {
+                    const scene = await prisma.scene.findUnique({ where: { id: task.sceneId } });
+                    searchDesc = scene?.visual_description;
+                }
+
                 if (searchDesc && searchType) {
+                    console.log(`[Worker] Checking library for ${searchType} match: "${searchDesc.substring(0, 50)}..."`);
+
                     // Configurar limiares baseados na prioridade (Vídeo > Imagem > Áudio)
-                    let minSimilarity = 0.80; // Default para Imagem
-                    if (searchType === 'VIDEO') minSimilarity = 0.75; // Prioridade máxima: mais flexível para reuso
-                    if (searchType === 'AUDIO') minSimilarity = 0.98; // Menor prioridade: muito rigoroso (quase idêntico)
+                    let minSimilarity = 0.80;
+                    if (searchType === 'VIDEO') minSimilarity = 0.75;
+                    if (searchType === 'AUDIO') minSimilarity = 0.98;
 
                     const matches = await assetLibraryService.findCompatibleAssets({
                         description: searchDesc,
@@ -62,8 +70,28 @@ export async function POST(request: Request) {
                     });
 
                     if (matches.length > 0) {
-                        const bestMatch = matches[0];
-                        console.log(`[Worker] Reusing ${searchType} asset (Sim: ${bestMatch.similarity.toFixed(2)}) from library: ${bestMatch.id}`);
+                        let bestMatch = matches[0];
+
+                        // AUTO-PROMOÇÃO: Se o match veio da busca profunda em cenas, indexar agora
+                        if ((bestMatch as any).from_index === false) {
+                            console.log(`[Worker] Promoting legacy asset from project database to AssetIndex...`);
+                            const registered = await assetLibraryService.registerAsset({
+                                source_scene_id: (bestMatch as any).source_scene?.id,
+                                source_project_id: (bestMatch as any).source_scene?.project_id,
+                                asset_type: searchType as any,
+                                url: bestMatch.url,
+                                description: bestMatch.description,
+                                duration_seconds: bestMatch.duration_seconds,
+                                metadata: bestMatch.metadata
+                            });
+
+                            if (registered) {
+                                // Atualizar o objeto para usar o novo ID do índice e permitir o tracking
+                                bestMatch = { ...bestMatch, id: registered.id };
+                            }
+                        }
+
+                        console.log(`[Worker] Match Found! Reusing ${searchType} (Similarity: ${bestMatch.similarity.toFixed(2)}) ID: ${bestMatch.id}`);
                         outputUrl = bestMatch.url;
                         reusedAsset = bestMatch;
 
@@ -71,10 +99,13 @@ export async function POST(request: Request) {
                         if (searchType === 'AUDIO' && bestMatch.metadata) {
                             timings = (bestMatch.metadata as any).timings;
                             duration = bestMatch.duration_seconds || undefined;
+                            console.log(`[Worker] Restored technical metadata for audio reuse.`);
                         }
 
-                        // Atualizar tracking de uso
+                        // Atualizar tracking de uso (Agora garantido que o ID existe no AssetIndex)
                         await assetLibraryService.trackAssetReuse(bestMatch.id, project.channel_id || undefined);
+                    } else {
+                        console.log(`[Worker] No compatible ${searchType} found in library or project history.`);
                     }
                 }
             }

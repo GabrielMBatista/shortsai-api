@@ -208,8 +208,11 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
             minSimilarity = 0.75,
         } = options;
 
-        const keywords = description.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        if (!description) return [];
 
+        const keywords = description.toLowerCase().replace(/[^\w\s]/gi, '').split(/\s+/).filter(w => w.length > 3);
+
+        // 1. Busca no Índice de Assets (Rápida e Taggeada)
         const assets = await prisma.assetIndex.findMany({
             where: {
                 asset_type: assetType,
@@ -217,50 +220,80 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
                     ? { last_used_in_channel: { not: channelId } }
                     : {}),
             },
-            orderBy: [
-                { quality_score: 'desc' },
-                { use_count: 'asc' },
-            ],
-            take: 50,
+            orderBy: [{ quality_score: 'desc' }, { use_count: 'asc' }],
+            take: 30,
         });
 
-        const matches: AssetMatch[] = assets
-            .map((asset: any) => {
-                const similarity = this.calculateSimilarity(
-                    description,
-                    asset.description,
-                    keywords,
-                    asset.tags,
-                    assetType
-                );
+        let matches: AssetMatch[] = assets
+            .map((asset: any) => ({
+                id: asset.id,
+                url: asset.url,
+                description: asset.description,
+                tags: asset.tags,
+                category: asset.category,
+                similarity: this.calculateSimilarity(description, asset.description, keywords, asset.tags, assetType),
+                use_count: asset.use_count,
+                quality_score: asset.quality_score || 1.0,
+                duration_seconds: asset.duration_seconds,
+                metadata: asset.metadata,
+                from_index: true
+            }));
+
+        // 2. Busca Híbrida: Se poucos matches, buscar diretamente na base de Cenas de todos os projetos
+        if (matches.filter(m => m.similarity >= minSimilarity).length < 3) {
+            console.log(`[AssetLibrary] Deep searching in Scenes table for ${assetType}...`);
+
+            const fieldUrl = assetType === 'VIDEO' ? 'video_url' : (assetType === 'AUDIO' ? 'audio_url' : 'image_url');
+            const fieldStatus = assetType === 'VIDEO' ? 'video_status' : (assetType === 'AUDIO' ? 'audio_status' : 'image_status');
+
+            const legacyScenes = await prisma.scene.findMany({
+                where: {
+                    [fieldUrl]: { not: null },
+                    [fieldStatus]: 'completed',
+                    deleted_at: null
+                },
+                take: 50,
+                orderBy: { created_at: 'desc' }
+            });
+
+            const sceneMatches = legacyScenes.map((scene: any) => {
+                const sceneDesc = assetType === 'AUDIO' ? scene.narration : scene.visual_description;
+                const similarity = this.calculateSimilarity(description, sceneDesc, keywords, [], assetType);
 
                 return {
-                    id: asset.id,
-                    url: asset.url,
-                    description: asset.description,
-                    tags: asset.tags,
-                    category: asset.category,
+                    id: `scene-${scene.id}`,
+                    url: scene[fieldUrl],
+                    description: sceneDesc,
+                    tags: [],
+                    category: null,
                     similarity,
-                    use_count: asset.use_count,
-                    quality_score: asset.quality_score || 1.0,
-                    duration_seconds: asset.duration_seconds,
-                    metadata: asset.metadata,
+                    use_count: 0,
+                    quality_score: 1.0,
+                    duration_seconds: assetType === 'AUDIO' ? Number(scene.duration_seconds) : null,
+                    metadata: assetType === 'AUDIO' ? { timings: scene.word_timings } : null,
+                    from_index: false,
+                    source_scene: scene
                 };
-            })
+            });
+
+            matches = [...matches, ...sceneMatches];
+        }
+
+        return matches
             .filter((match: any) => match.similarity >= minSimilarity)
             .sort((a: any, b: any) => b.similarity - a.similarity)
             .slice(0, 5);
-
-        return matches;
     }
 
     private calculateSimilarity(
-        desc1: string,
-        desc2: string,
+        desc1: string | null | undefined,
+        desc2: string | null | undefined,
         keywords1: string[],
         tags2: string[],
         assetType: AssetType
     ): number {
+        if (!desc1 || !desc2) return 0;
+
         const d1 = desc1.toLowerCase().trim();
         const d2 = desc2.toLowerCase().trim();
 
@@ -297,14 +330,18 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
     }
 
     async trackAssetReuse(assetId: string, channelId?: string): Promise<void> {
-        await prisma.assetIndex.update({
-            where: { id: assetId },
-            data: {
-                use_count: { increment: 1 },
-                last_used_at: new Date(),
-                ...(channelId ? { last_used_in_channel: channelId } : {}),
-            },
-        });
+        try {
+            await prisma.assetIndex.update({
+                where: { id: assetId },
+                data: {
+                    use_count: { increment: 1 },
+                    last_used_at: new Date(),
+                    ...(channelId ? { last_used_in_channel: channelId } : {}),
+                },
+            });
+        } catch (error) {
+            console.error(`[AssetLibraryService] Failed to track reuse for asset ${assetId}:`, error);
+        }
     }
 
     async getReuseStats(): Promise<ReuseStats> {
@@ -386,7 +423,7 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
         source_project_id: string;
         asset_type: AssetType;
         url: string;
-        description: string;
+        description?: string;
         duration_seconds?: number | null;
         metadata?: any;
     }) {
@@ -398,7 +435,23 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
 
             if (existing) return existing;
 
-            const categorization = await this.categorizeAsset(data.description);
+            // CONSULTAR PROJETO ORIGINAL: Garantir que a descrição venha da fonte da verdade (Cena)
+            let finalDescription = data.description;
+            if (data.source_scene_id) {
+                const scene = await prisma.scene.findUnique({
+                    where: { id: data.source_scene_id }
+                });
+                if (scene) {
+                    finalDescription = data.asset_type === 'AUDIO' ? scene.narration : scene.visual_description;
+                }
+            }
+
+            if (!finalDescription) {
+                console.warn(`[AssetLibraryService] Cannot register asset without description. URL: ${data.url}`);
+                return null;
+            }
+
+            const categorization = await this.categorizeAsset(finalDescription);
 
             return await prisma.assetIndex.create({
                 data: {
@@ -406,7 +459,7 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
                     source_project_id: data.source_project_id,
                     asset_type: data.asset_type,
                     url: data.url,
-                    description: data.description,
+                    description: finalDescription,
                     tags: categorization.tags,
                     category: categorization.category,
                     duration_seconds: data.duration_seconds || null,
