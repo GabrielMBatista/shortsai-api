@@ -1,8 +1,13 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
+# ============================================
+# NODE / NPM
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -10,42 +15,101 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js
+# ============================================
+# NEXT.JS
+# ============================================
 /.next/
 /out/
+next-env.d.ts
+*.tsbuildinfo
 
-# production
+# ============================================
+# BUILD / DIST
+# ============================================
 /build
+/dist
+/coverage
 
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
+# ============================================
+# ENVIRONMENT FILES (SENSÍVEL)
+# ============================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.production
 !.env.example
 
-# vercel
-.vercel
+# ============================================
+# DOCKER VOLUMES (DADOS LOCAIS)
+# ============================================
+pgdata/
+redisdata/
+data/
+queue.json
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-/dist
+# ============================================
+# BACKUPS (DADOS SENSÍVEIS)
+# ============================================
+backups/
+*.sql
+*.sql.gz
+*.dump
 
+# ============================================
+# CERTIFICADOS SSL
+# ============================================
+*.pem
+*.key
+*.crt
+*.cert
+letsencrypt/
+
+# ============================================
+# PRISMA
+# ============================================
 /app/generated/prisma
 
+# ============================================
+# LOGS
+# ============================================
+logs/
+*.log
+
+# ============================================
+# OS FILES
+# ============================================
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ============================================
+# IDE
+# ============================================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ============================================
+# VERCEL
+# ============================================
+.vercel
+
+# ============================================
+# SCRIPTS TEMPORÁRIOS
+# ============================================
 seed-plans.ts
 seed-plans.js
 seed.sql
 update-limits.ts
-queue.json
+temp-*.ts
+temp-*.js
