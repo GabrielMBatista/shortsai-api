@@ -184,6 +184,7 @@ model Project {
   channel_id                    String?
   persona_id                    String?
   persona_version               Int?
+  asset_reuse_strategy          String              @default("auto_reuse")
   ProjectCharacters             ProjectCharacters[]
   folder                        Folder?             @relation(fields: [folder_id], references: [id], onDelete: Cascade)
   show                          Show?               @relation(fields: [show_id], references: [id])
@@ -818,3 +819,50 @@ model ChannelPersonaHistory {
   @@index([personaId])
   @@map("channel_persona_history")
 }
+
+// ═══════════════════════════════════════════════
+// ASSET REUSE & CATALOGING SYSTEM
+// ═══════════════════════════════════════════════
+
+model AssetIndex {
+  id          String   @id @default(cuid())
+  
+  // Referência ao asset original
+  source_scene_id    String
+  source_project_id  String
+  asset_type         AssetType
+  
+  // Localização do asset
+  url         String
+  
+  // Metadados para matching
+  description String   @db.Text
+  tags        String[] @default([])
+  category    String?
+  
+  // Rastreamento de uso
+  use_count     Int      @default(1)
+  last_used_at  DateTime @default(now())
+  last_used_in_channel String?
+  
+  // Qualidade/Duration
+  duration_seconds Float?
+  quality_score    Float? @default(1.0)
+  metadata         Json?
+  
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  
+  @@index([asset_type, category])
+  @@index([source_project_id])
+  @@index([tags])
+  @@index([last_used_at])
+  @@map("asset_index")
+}
+
+enum AssetType {
+  IMAGE
+  AUDIO
+  VIDEO
+}
+

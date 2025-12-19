@@ -25,6 +25,7 @@ export async function POST(request: Request) {
         let outputUrl: string | undefined;
         let timings: any[] | undefined;
         let duration: number | undefined;
+        let reusedAsset: any = null;
 
         // Check Limits
         const limitType = task.action === 'generate_image' ? 'image' :
@@ -39,62 +40,119 @@ export async function POST(request: Request) {
             }
         }
 
+        const { assetLibraryService } = await import('@/lib/assets/asset-library-service');
+        const reuseStrategy = (project as any).asset_reuse_strategy || 'auto_reuse';
+
         try {
-            switch (task.action) {
-                case 'generate_image':
-                    if ('prompt' in task.params) {
-                        outputUrl = await AIService.generateImage(
-                            project.user_id,
-                            task.params.prompt,
-                            project.style,
-                            task.apiKeys
-                        );
-                    }
-                    break;
-                case 'generate_audio':
-                    if ('text' in task.params) {
-                        const result = await AIService.generateAudio(
-                            project.user_id,
-                            task.params.text,
-                            task.params.voice,
-                            task.params.provider,
-                            task.apiKeys,
-                            project.audio_model || undefined
-                        );
-                        outputUrl = result.url;
-                        timings = result.timings;
-                        duration = result.duration;
-                    }
-                    break;
-                case 'generate_music':
-                    if ('prompt' in task.params) {
-                        outputUrl = await AIService.generateMusic(
-                            project.user_id,
-                            task.params.prompt,
-                            task.apiKeys
-                        );
-                    }
-                    break;
-                case 'generate_video':
-                    if (task.sceneId) {
-                        const scene = await prisma.scene.findUnique({ where: { id: task.sceneId } });
-                        if (scene && scene.image_url) {
-                            const params = task.params as any;
-                            outputUrl = await AIService.generateVideo(
-                                project.user_id,
-                                scene.image_url,
-                                'prompt' in task.params ? task.params.prompt : '',
-                                task.apiKeys,
-                                params.model || 'veo-2.0-generate-001',
-                                params.with_audio || false
-                            );
-                        } else {
-                            throw new Error("Scene image not found for video generation");
+            if (reuseStrategy === 'auto_reuse') {
+                const searchDesc = task.action === 'generate_audio' ? (task.params as any).text : (task.params as any).prompt;
+                const searchType = task.action === 'generate_image' ? 'IMAGE' : (task.action === 'generate_audio' ? 'AUDIO' : (task.action === 'generate_video' ? 'VIDEO' : null));
+
+                if (searchDesc && searchType) {
+                    // Configurar limiares baseados na prioridade (Vídeo > Imagem > Áudio)
+                    let minSimilarity = 0.80; // Default para Imagem
+                    if (searchType === 'VIDEO') minSimilarity = 0.75; // Prioridade máxima: mais flexível para reuso
+                    if (searchType === 'AUDIO') minSimilarity = 0.98; // Menor prioridade: muito rigoroso (quase idêntico)
+
+                    const matches = await assetLibraryService.findCompatibleAssets({
+                        description: searchDesc,
+                        assetType: searchType as any,
+                        channelId: project.channel_id || undefined,
+                        minSimilarity
+                    });
+
+                    if (matches.length > 0) {
+                        const bestMatch = matches[0];
+                        console.log(`[Worker] Reusing ${searchType} asset (Sim: ${bestMatch.similarity.toFixed(2)}) from library: ${bestMatch.id}`);
+                        outputUrl = bestMatch.url;
+                        reusedAsset = bestMatch;
+
+                        // Restaurar metadados técnicos (timings, duration)
+                        if (searchType === 'AUDIO' && bestMatch.metadata) {
+                            timings = (bestMatch.metadata as any).timings;
+                            duration = bestMatch.duration_seconds || undefined;
                         }
+
+                        // Atualizar tracking de uso
+                        await assetLibraryService.trackAssetReuse(bestMatch.id, project.channel_id || undefined);
                     }
-                    break;
-                default:
-                    throw new Error(`Unknown action ${task.action}`);
+                }
+            }
+
+            // Se não houve reuso, gerar normalmente
+            if (!outputUrl) {
+                switch (task.action) {
+                    case 'generate_image':
+                        if ('prompt' in task.params) {
+                            outputUrl = await AIService.generateImage(
+                                project.user_id,
+                                task.params.prompt,
+                                project.style,
+                                task.apiKeys
+                            );
+                        }
+                        break;
+                    case 'generate_audio':
+                        if ('text' in task.params) {
+                            const result = await AIService.generateAudio(
+                                project.user_id,
+                                task.params.text,
+                                task.params.voice,
+                                task.params.provider,
+                                task.apiKeys,
+                                project.audio_model || undefined
+                            );
+                            outputUrl = result.url;
+                            timings = result.timings;
+                            duration = result.duration;
+                        }
+                        break;
+                    case 'generate_music':
+                        if ('prompt' in task.params) {
+                            outputUrl = await AIService.generateMusic(
+                                project.user_id,
+                                task.params.prompt,
+                                task.apiKeys
+                            );
+                        }
+                        break;
+                    case 'generate_video':
+                        if (task.sceneId) {
+                            const scene = await prisma.scene.findUnique({ where: { id: task.sceneId } });
+                            if (scene && scene.image_url) {
+                                const params = task.params as any;
+                                outputUrl = await AIService.generateVideo(
+                                    project.user_id,
+                                    scene.image_url,
+                                    'prompt' in task.params ? task.params.prompt : '',
+                                    task.apiKeys,
+                                    params.model || 'veo-2.0-generate-001',
+                                    params.with_audio || false
+                                );
+                            } else {
+                                throw new Error("Scene image not found for video generation");
+                            }
+                        }
+                        break;
+                    default:
+                        throw new Error(`Unknown action ${task.action}`);
+                }
+
+                // Indexar o novo asset gerado para reuso futuro
+                if (outputUrl && task.sceneId) {
+                    const registerType = task.action === 'generate_image' ? 'IMAGE' : (task.action === 'generate_audio' ? 'AUDIO' : (task.action === 'generate_video' ? 'VIDEO' : null));
+                    if (registerType) {
+                        await assetLibraryService.registerAsset({
+                            source_scene_id: task.sceneId,
+                            source_project_id: task.projectId,
+                            asset_type: registerType as any,
+                            url: outputUrl,
+                            description: task.action === 'generate_audio' ? (task.params as any).text : (task.params as any).prompt,
+                            duration_seconds: duration,
+                            metadata: timings ? { timings } : null
+                        });
+                    }
+                }
             }
 
             // Complete Task
@@ -110,7 +168,7 @@ export async function POST(request: Request) {
                 duration
             );
 
-            return NextResponse.json({ success: true, url: outputUrl });
+            return NextResponse.json({ success: true, url: outputUrl, reused: !!reusedAsset });
 
         } catch (error: any) {
             console.error(`[Worker] Task failed: ${error.message}`);
