@@ -104,11 +104,6 @@ export class WorkflowEngine {
                 if (scene.image_status === SceneStatus.queued) {
                     await WorkflowStateService.updateSceneStatus(projectId, scene.id, 'image', SceneStatus.processing);
 
-                    // Check for asset reuse
-                    const assetReuseStrategy = (project as any).asset_reuse_strategy || 'no_reuse';
-                    if (assetReuseStrategy === 'auto_reuse') {
-                        console.log(`[WorkflowEngine] Auto-reuse enabled for scene ${scene.id}. Searching compatible assets...`);
-                    }
 
                     let prompt = scene.visual_description;
 
