@@ -60,10 +60,14 @@ export async function POST(req: NextRequest) {
         // (Videos will be cropped during final render)
         if (isImage) {
             try {
+                console.log('[Upload] Starting image crop for', file.name);
                 const { cropImageTo9x16 } = await import('@/lib/utils/asset-crop');
+                const originalSize = buffer.length;
                 buffer = await cropImageTo9x16(buffer);
-            } catch (error) {
-                console.warn('[Upload] Image crop failed, uploading original:', error);
+                console.log(`[Upload] Image cropped successfully. Original: ${originalSize}bytes, Cropped: ${buffer.length}bytes`);
+            } catch (error: any) {
+                console.error('[Upload] Image crop failed:', error.message);
+                console.error('[Upload] Stack:', error.stack);
                 // Continue with original buffer
             }
         }
