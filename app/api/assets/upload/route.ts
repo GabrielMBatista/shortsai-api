@@ -84,7 +84,26 @@ export async function POST(req: NextRequest) {
             data: updateData
         });
 
-        // Asset tracking removed - table doesn't exist in current schema
+        // Create asset index entry for cataloging and reuse
+        await prisma.assetIndex.create({
+            data: {
+                source_scene_id: sceneId,
+                source_project_id: scene.project_id,
+                asset_type: isImage ? 'IMAGE' : 'VIDEO',
+                url: uploadedUrl,
+                description: scene.visual_description,
+                tags: [], // Could extract from description with AI later
+                category: null,
+                duration_seconds: isVideo ? null : null, // Could be extracted from video metadata
+                metadata: {
+                    originalFileName: file.name,
+                    mimeType: file.type,
+                    uploadedAt: new Date().toISOString(),
+                    uploadedBy: session.user.id,
+                    fileSize: file.size
+                }
+            }
+        });
 
         return NextResponse.json({
             success: true,
