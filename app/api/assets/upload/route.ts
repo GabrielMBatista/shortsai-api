@@ -54,7 +54,19 @@ export async function POST(req: NextRequest) {
 
         // Convert file to buffer
         const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
+        let buffer = Buffer.from(bytes);
+
+        // Auto-crop images to 9:16 aspect ratio to prevent squishing
+        // (Videos will be cropped during final render)
+        if (isImage) {
+            try {
+                const { cropImageTo9x16 } = await import('@/lib/utils/asset-crop');
+                buffer = await cropImageTo9x16(buffer);
+            } catch (error) {
+                console.warn('[Upload] Image crop failed, uploading original:', error);
+                // Continue with original buffer
+            }
+        }
 
         // Determine folder based on type
         const folder = isImage ? 'scenes/images' : 'scenes/videos';
