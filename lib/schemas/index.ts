@@ -3,6 +3,7 @@ export * from './project.schema';
 export * from './user.schema';
 export * from './persona.schema';
 export * from './ai.schema';
+export * from './character.schema';
 
 // Re-export specific commonly used schemas for convenience
 export {

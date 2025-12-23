@@ -205,12 +205,13 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
             assetType,
             channelId,
             excludeRecentlyUsed = true,
-            minSimilarity = 0.75,
+            minSimilarity = 0.0,
         } = options;
 
         if (!description) return [];
 
-        const keywords = description.toLowerCase().replace(/[^\w\s]/gi, '').split(/\s+/).filter(w => w.length > 3);
+        // Relaxed keyword extraction: include words with length >= 2
+        const keywords = description.toLowerCase().replace(/[^\w\s]/gi, '').split(/\s+/).filter(w => w.length >= 2);
 
         // 1. Busca no Índice de Assets (Rápida e Taggeada)
         const assets = await prisma.assetIndex.findMany({
@@ -282,7 +283,7 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
         return matches
             .filter((match: any) => match.similarity >= minSimilarity)
             .sort((a: any, b: any) => b.similarity - a.similarity)
-            .slice(0, 5);
+            .slice(0, 30);
     }
 
     private calculateSimilarity(
@@ -294,39 +295,25 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
     ): number {
         if (!desc1 || !desc2) return 0;
 
-        const d1 = desc1.toLowerCase().trim();
-        const d2 = desc2.toLowerCase().trim();
+        const d1 = desc1.toLowerCase();
+        const d2 = desc2.toLowerCase();
 
-        // Para ÁUDIO, o match deve ser quase literal (Proteção de roteiro)
-        if (assetType === 'AUDIO') {
-            if (d1 === d2) return 1.0;
-            // Se as frases forem muito longas, uma pequena diferença de pontuação ainda pode ser 1.0
-            const clean1 = d1.replace(/[^\w\s]/gi, '');
-            const clean2 = d2.replace(/[^\w\s]/gi, '');
-            if (clean1 === clean2) return 0.99;
+        // Check for direct substring match (strong signal)
+        if (d1.includes(d2) || d2.includes(d1)) return 1.0;
 
-            // Fallback para Jaccard em áudio é muito baixo para evitar erros
-            return 0;
-        }
+        // Simple Jaccard Index based on all words
+        const allWords1 = new Set(keywords1);
+        const allWords2 = new Set(tags2.concat(d2.split(/\s+/).map(w => w.toLowerCase().replace(/[^\w\s]/gi, ''))));
 
-        // Para VÍDEO e IMAGEM, usamos similaridade semântica/palavras-chave
-        const words1 = new Set(keywords1);
-        const words2 = new Set(tags2.concat(d2.split(/\s+/)));
-
-        let commonWords = 0;
-        words1.forEach(word => {
-            if (words2.has(word)) commonWords++;
+        let intersection = 0;
+        allWords1.forEach(w => {
+            if (allWords2.has(w)) intersection++;
         });
 
-        const totalWords = words1.size;
-        if (totalWords === 0) return 0;
+        const union = new Set([...allWords1, ...allWords2]).size;
+        if (union === 0) return 0;
 
-        const jaccard = commonWords / totalWords;
-
-        // Boost se a descrição contiver palavras muito específicas das tags
-        const categoryBoost = tags2.some(tag => keywords1.includes(tag.toLowerCase())) ? 0.15 : 0;
-
-        return Math.min(jaccard + categoryBoost, 1.0);
+        return intersection / union;
     }
 
     async trackAssetReuse(assetId: string, channelId?: string): Promise<void> {

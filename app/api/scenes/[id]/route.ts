@@ -25,7 +25,9 @@ export async function PATCH(
             video_status,
             media_type,
             scene_number,
-            characterIds // Array of character IDs
+            characterIds, // Array of character IDs
+            assetId, // Optional: Link to existing asset
+            assetType // Optional: 'VIDEO' or 'IMAGE'
         } = body;
 
         // Verify ownership
@@ -51,6 +53,29 @@ export async function PATCH(
             media_type,
             scene_number
         };
+
+        // Handle Asset Linking
+        if (assetId) {
+            const asset = await prisma.assetIndex.findUnique({
+                where: { id: assetId }
+            });
+
+            if (asset) {
+                // Determine type from asset or fallback to request param
+                const isVideo = asset.asset_type === 'VIDEO' || assetType === 'VIDEO';
+
+                if (isVideo) {
+                    updateData.video_url = asset.url;
+                    updateData.video_status = 'completed';
+                    updateData.media_type = 'video';
+                    // Reset image if switching to video? Maybe not strictly necessary but cleaner
+                } else {
+                    updateData.image_url = asset.url;
+                    updateData.image_status = 'completed';
+                    updateData.media_type = 'image';
+                }
+            }
+        }
 
         if (Array.isArray(characterIds)) {
             updateData.characters = {

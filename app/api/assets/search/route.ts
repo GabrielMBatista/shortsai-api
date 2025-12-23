@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
         const { searchParams } = new URL(req.url);
         const description = searchParams.get('description');
         const type = (searchParams.get('type') || 'VIDEO') as AssetType;
-        const minSimilarity = parseFloat(searchParams.get('minSimilarity') || '0.6');
+        const minSimilarity = parseFloat(searchParams.get('minSimilarity') || '0.1');
 
         if (!description) {
             return NextResponse.json({ error: 'Description is required' }, { status: 400 });
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
         const matches = await assetLibraryService.findCompatibleAssets({
             description,
             assetType: type,
-            minSimilarity,
+            minSimilarity: 0.0, // Force return all candidates even if poor match
             excludeRecentlyUsed: false // No seletor manual, mostramos tudo
         });
 
@@ -32,6 +32,8 @@ export async function GET(req: NextRequest) {
             matches: matches.map(m => ({
                 id: m.id,
                 url: m.url,
+                // @ts-ignore
+                type: m.asset_type || (m.url.includes('.mp4') ? 'VIDEO' : 'IMAGE'), // Fallback if property missing
                 similarity: Math.round(m.similarity * 100),
                 description: m.description,
                 tags: m.tags,
