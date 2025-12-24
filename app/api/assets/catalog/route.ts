@@ -32,9 +32,12 @@ export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url);
         const skip = parseInt(searchParams.get('skip') || '0');
-        const take = parseInt(searchParams.get('take') || '20');
+        // Aceitar tanto 'take' quanto 'limit' (frontend usa 'limit')
+        const take = parseInt(searchParams.get('take') || searchParams.get('limit') || '20');
         const assetType = searchParams.get('assetType') as AssetType | null;
         const category = searchParams.get('category');
+
+        console.log('[AssetCatalog] GET request - skip:', skip, 'take:', take, 'assetType:', assetType);
 
         const result = await assetLibraryService.listAssets({
             skip,
@@ -42,6 +45,8 @@ export async function GET(req: NextRequest) {
             assetType: assetType || undefined,
             category: category || undefined,
         });
+
+        console.log('[AssetCatalog] Returning', result.assets.length, 'assets out of', result.total, 'total');
 
         return NextResponse.json({
             success: true,

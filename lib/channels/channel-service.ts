@@ -211,84 +211,92 @@ export class ChannelService {
 
         const youtube = google.youtube({ version: 'v3', auth: authClient });
 
-        const response = await youtube.channels.list({
-            part: ['statistics'],
-            id: [channel.youtubeChannelId]
-        });
-
-        const stats = response.data.items?.[0]?.statistics;
-        if (!stats) throw new Error('Stats não disponíveis');
-
-        const updated = await prisma.channel.update({
-            where: { id: channelId },
-            data: {
-                subscriberCount: parseInt(stats.subscriberCount || '0'),
-                videoCount: parseInt(stats.videoCount || '0'),
-                viewCount: BigInt(stats.viewCount || '0'),
-                lastSyncedAt: new Date()
-            }
-        });
-
-        // ✅ Sincronizar vídeos também
         try {
-            const videos = await this.getChannelVideos(channelId, { maxResults: 100 });
+            const response = await youtube.channels.list({
+                part: ['statistics'],
+                id: [channel.youtubeChannelId]
+            });
 
-            console.log(`[ChannelService] Syncing ${videos.length} videos for channel ${channelId}`);
+            const stats = response.data.items?.[0]?.statistics;
+            if (!stats) throw new Error('Stats não disponíveis');
 
-            // Salvar/atualizar vídeos no banco
-            for (const video of videos) {
-                // Parse duration ISO 8601 (PT1M30S → segundos)
-                let durationSec = null;
-                if (video.duration) {
-                    const match = video.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-                    if (match) {
-                        const hours = parseInt(match[1] || '0');
-                        const minutes = parseInt(match[2] || '0');
-                        const seconds = parseInt(match[3] || '0');
-                        durationSec = hours * 3600 + minutes * 60 + seconds;
+            const updated = await prisma.channel.update({
+                where: { id: channelId },
+                data: {
+                    subscriberCount: parseInt(stats.subscriberCount || '0'),
+                    videoCount: parseInt(stats.videoCount || '0'),
+                    viewCount: BigInt(stats.viewCount || '0'),
+                    lastSyncedAt: new Date()
+                }
+            });
+
+            // ✅ Sincronizar vídeos também
+            try {
+                const videos = await this.getChannelVideos(channelId, { maxResults: 100 });
+
+                console.log(`[ChannelService] Syncing ${videos.length} videos for channel ${channelId}`);
+
+                // Salvar/atualizar vídeos no banco
+                for (const video of videos) {
+                    // Parse duration ISO 8601 (PT1M30S → segundos)
+                    let durationSec = null;
+                    if (video.duration) {
+                        const match = video.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+                        if (match) {
+                            const hours = parseInt(match[1] || '0');
+                            const minutes = parseInt(match[2] || '0');
+                            const seconds = parseInt(match[3] || '0');
+                            durationSec = hours * 3600 + minutes * 60 + seconds;
+                        }
                     }
+
+                    await prisma.youtubeVideo.upsert({
+                        where: {
+                            youtubeVideoId: video.id
+                        },
+                        update: {
+                            titleSnapshot: video.title,
+                            durationSec,
+                            publishedAt: video.publishedAt ? new Date(video.publishedAt) : null,
+                            updatedAt: new Date()
+                        },
+                        create: {
+                            id: `${channelId}_${video.id}`,
+                            channelId,
+                            youtubeVideoId: video.id,
+                            titleSnapshot: video.title,
+                            durationSec,
+                            publishedAt: video.publishedAt ? new Date(video.publishedAt) : null
+                        }
+                    });
+
+                    // Salvar métricas em YoutubeVideoMetrics
+                    await prisma.youtubeVideoMetrics.create({
+                        data: {
+                            videoId: `${channelId}_${video.id}`,
+                            date: new Date(),
+                            views: video.statistics.viewCount,
+                            likes: video.statistics.likeCount,
+                            comments: video.statistics.commentCount,
+                            source: 'API'
+                        }
+                    });
                 }
 
-                await prisma.youtubeVideo.upsert({
-                    where: {
-                        youtubeVideoId: video.id
-                    },
-                    update: {
-                        titleSnapshot: video.title,
-                        durationSec,
-                        publishedAt: video.publishedAt ? new Date(video.publishedAt) : null,
-                        updatedAt: new Date()
-                    },
-                    create: {
-                        id: `${channelId}_${video.id}`,
-                        channelId,
-                        youtubeVideoId: video.id,
-                        titleSnapshot: video.title,
-                        durationSec,
-                        publishedAt: video.publishedAt ? new Date(video.publishedAt) : null
-                    }
-                });
-
-                // Salvar métricas em YoutubeVideoMetrics
-                await prisma.youtubeVideoMetrics.create({
-                    data: {
-                        videoId: `${channelId}_${video.id}`,
-                        date: new Date(),
-                        views: video.statistics.viewCount,
-                        likes: video.statistics.likeCount,
-                        comments: video.statistics.commentCount,
-                        source: 'API'
-                    }
-                });
+                console.log(`[ChannelService] Successfully synced ${videos.length} videos`);
+            } catch (error) {
+                console.error('[ChannelService] Failed to sync videos:', error);
+                // Não falhar a operação inteira se só os vídeos falharem
             }
 
-            console.log(`[ChannelService] Successfully synced ${videos.length} videos`);
-        } catch (error) {
-            console.error('[ChannelService] Failed to sync videos:', error);
-            // Não falhar a operação inteira se só os vídeos falharem
+            return this.serialize(updated);
+        } catch (error: any) {
+            // Tratamento específico para token expirado/revogado
+            if (error.message?.includes('invalid_grant') || error.code === 401) {
+                throw new Error('Sua conexão com o Google expirou. Por favor, reconecte sua conta nas configurações.');
+            }
+            throw error;
         }
-
-        return this.serialize(updated);
     }
 
     /**
