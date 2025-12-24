@@ -30,7 +30,11 @@ export async function uploadBufferToR2(
     'image/jpeg': 'jpg',
     'image/jpg': 'jpg',
     'image/webp': 'webp',
-    'video/mp4': 'mp4'
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+    'video/quicktime': 'mov',
+    'video/x-msvideo': 'avi',
+    'video/avi': 'avi'
   };
 
   const extension = extMap[mimeType] || mimeType.split('/')[1] || 'bin';

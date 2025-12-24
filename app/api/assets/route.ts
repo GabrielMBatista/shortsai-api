@@ -26,12 +26,15 @@ export async function GET(req: NextRequest) {
         // Logic to extract key from R2 URL
         if (decodedUrl.startsWith('http')) {
             const urlObj = new URL(decodedUrl);
-            // Remove leading slash
+            // Remove leading slash and query parameters (like cache busters)
             objectKey = urlObj.pathname.substring(1);
         } else {
             // Assume it is already a key
             objectKey = decodedUrl;
         }
+
+        // Remove any query parameters if they exist (e.g., ?t=123456)
+        objectKey = objectKey.split('?')[0];
 
         console.log(`[Assets Proxy] Fetching from S3/R2: ${objectKey}`);
 

@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
   // 🔥 Fix 413 Error: Increase body size limit for image/character analysis
   experimental: {
     serverActions: {
-      bodySizeLimit: '50mb' // Allow large image uploads
+      bodySizeLimit: '150mb' // Allow large video uploads (up to 150MB)
     }
   },
 

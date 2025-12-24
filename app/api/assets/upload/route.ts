@@ -24,14 +24,24 @@ export async function POST(req: NextRequest) {
 
         // Validate file type
         const validImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        const validVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
+        const validVideoTypes = [
+            'video/mp4',
+            'video/webm',
+            'video/quicktime',  // .mov
+            'video/x-msvideo',  // .avi
+            'video/avi'         // alternative MIME for .avi
+        ];
 
         const isImage = validImageTypes.includes(file.type);
         const isVideo = validVideoTypes.includes(file.type);
 
+        console.log(`[Upload] File validation - Name: ${file.name}, Type: ${file.type}, Size: ${file.size} bytes`);
+        console.log(`[Upload] Is Image: ${isImage}, Is Video: ${isVideo}`);
+
         if (!isImage && !isVideo) {
+            console.error(`[Upload] Invalid file type rejected: ${file.type}`);
             return NextResponse.json({
-                error: 'Invalid file type. Only images (JPEG, PNG, GIF, WebP) and videos (MP4, WebM, MOV) are allowed.'
+                error: `Invalid file type. Only images (JPEG, PNG, GIF, WebP) and videos (MP4, WebM, MOV, AVI) are allowed. Received: ${file.type}`
             }, { status: 400 });
         }
 
@@ -54,7 +64,7 @@ export async function POST(req: NextRequest) {
 
         // Convert file to buffer
         const bytes = await file.arrayBuffer();
-        let buffer = Buffer.from(bytes);
+        let buffer = Buffer.from(new Uint8Array(bytes));
 
         // Auto-crop images to 9:16 aspect ratio to prevent squishing
         // (Videos will be cropped during final render)
@@ -63,7 +73,8 @@ export async function POST(req: NextRequest) {
                 console.log('[Upload] Starting image crop for', file.name);
                 const { cropImageTo9x16 } = await import('@/lib/utils/asset-crop');
                 const originalSize = buffer.length;
-                buffer = await cropImageTo9x16(buffer);
+                const croppedBuffer = await cropImageTo9x16(buffer);
+                buffer = Buffer.from(croppedBuffer);  // Garantir tipo correto
                 console.log(`[Upload] Image cropped successfully. Original: ${originalSize}bytes, Cropped: ${buffer.length}bytes`);
             } catch (error: any) {
                 console.error('[Upload] Image crop failed:', error.message);
@@ -76,13 +87,21 @@ export async function POST(req: NextRequest) {
         const folder = isImage ? 'scenes/images' : 'scenes/videos';
 
         // Upload to R2
+        console.log(`[Upload] Uploading ${isVideo ? 'video' : 'image'} to R2. Size: ${buffer.length} bytes, Type: ${file.type}`);
         const uploadedUrl = await uploadBufferToR2(buffer, file.type, folder);
 
         if (!uploadedUrl) {
-            return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
+            console.error('[Upload] R2 upload returned null/empty URL');
+            return NextResponse.json({ error: 'Upload failed - no URL returned' }, { status: 500 });
         }
 
+        console.log(`[Upload] Successfully uploaded to: ${uploadedUrl}`);
+
         // Update scene with new asset
+        // IMPORTANT: We DO NOT delete the old asset because:
+        // 1. It may be reused in other projects/scenes (asset library)
+        // 2. Deleting it would break those references
+        // 3. Orphaned assets should be cleaned up by a separate garbage collection process
         const updateData: any = {};
 
         if (isImage) {
@@ -101,25 +120,33 @@ export async function POST(req: NextRequest) {
         });
 
         // Create asset index entry for cataloging and reuse
-        await prisma.assetIndex.create({
-            data: {
-                source_scene_id: sceneId,
-                source_project_id: scene.project_id,
-                asset_type: isImage ? 'IMAGE' : 'VIDEO',
-                url: uploadedUrl,
-                description: scene.visual_description,
-                tags: [], // Could extract from description with AI later
-                category: null,
-                duration_seconds: isVideo ? null : null, // Could be extracted from video metadata
-                metadata: {
-                    originalFileName: file.name,
-                    mimeType: file.type,
-                    uploadedAt: new Date().toISOString(),
-                    uploadedBy: session.user.id,
-                    fileSize: file.size
+        try {
+            console.log(`[Upload] Creating asset index entry for ${isImage ? 'image' : 'video'}: ${uploadedUrl}`);
+            const assetIndex = await prisma.assetIndex.create({
+                data: {
+                    source_scene_id: sceneId,
+                    source_project_id: scene.project_id,
+                    asset_type: isImage ? 'IMAGE' : 'VIDEO',
+                    url: uploadedUrl,
+                    description: scene.visual_description,
+                    tags: [], // Could extract from description with AI later
+                    category: null,
+                    duration_seconds: isVideo ? null : null, // Could be extracted from video metadata
+                    metadata: {
+                        originalFileName: file.name,
+                        mimeType: file.type,
+                        uploadedAt: new Date().toISOString(),
+                        uploadedBy: session.user.id,
+                        fileSize: file.size
+                    }
                 }
-            }
-        });
+            });
+            console.log(`[Upload] Asset index entry created successfully. ID: ${assetIndex.id}`);
+        } catch (assetIndexError: any) {
+            // Log error but don't fail the upload if asset indexing fails
+            console.error('[Upload] Failed to create asset index entry:', assetIndexError.message);
+            console.error('[Upload] Asset will be available but not indexed for reuse');
+        }
 
         return NextResponse.json({
             success: true,

@@ -22,6 +22,7 @@ interface AssetMatch {
     quality_score: number;
     duration_seconds?: number | null;
     metadata?: any;
+    isRecentlyUsed?: boolean;  // Indica se foi usado recentemente neste canal
 }
 
 interface ReuseStats {
@@ -204,7 +205,7 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
             description,
             assetType,
             channelId,
-            excludeRecentlyUsed = true,
+            excludeRecentlyUsed = false,  // ← MUDADO: Mostrar TODOS os assets
             minSimilarity = 0.0,
         } = options;
 
@@ -237,7 +238,9 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
                 quality_score: asset.quality_score || 1.0,
                 duration_seconds: asset.duration_seconds,
                 metadata: asset.metadata,
-                from_index: true
+                from_index: true,
+                // Marcar se foi usado recentemente neste canal
+                isRecentlyUsed: channelId ? asset.last_used_in_channel === channelId : false
             }));
 
         // 2. Busca Híbrida: Se poucos matches, buscar diretamente na base de Cenas de todos os projetos
