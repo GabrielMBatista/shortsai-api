@@ -76,6 +76,7 @@ services:
           - shortsai-api # O Nginx vai procurar por este nome exato
     volumes:
       - shortsai_data:/app/data
+      - ./local_media_cache:/app/data/media_cache # Cache local persistente para dev (Hybrid R2/Local)
 
 
 volumes:

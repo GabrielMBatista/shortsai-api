@@ -113,3 +113,22 @@ seed.sql
 update-limits.ts
 temp-*.ts
 temp-*.js
+
+# ============================================
+# MEDIA FILES (GENERATED CONTENT)
+# ============================================
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.mp3
+*.wav
+*.m4a
+!/public/
+!/src/assets/
