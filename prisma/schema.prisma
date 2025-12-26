@@ -254,6 +254,7 @@ model Scene {
   video_model        String?
   image_prompt_optimized String? @db.Text
   video_prompt_optimized String? @db.Text
+  video_crop_config Json?
   jobs               Job[]
   project            Project     @relation(fields: [project_id], references: [id], onDelete: Cascade)
   characters         Character[] @relation("SceneToCharacter")

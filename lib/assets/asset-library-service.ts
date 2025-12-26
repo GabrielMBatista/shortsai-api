@@ -224,7 +224,7 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
                     : {}),
             },
             orderBy: [{ quality_score: 'desc' }, { use_count: 'asc' }],
-            take: 30,
+            take: 500,
         });
 
         let matches: AssetMatch[] = assets
@@ -290,7 +290,7 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
                     [fieldStatus]: 'completed',
                     deleted_at: null
                 },
-                take: 50,
+                take: 500,
                 orderBy: { created_at: 'desc' }
             });
 
@@ -321,7 +321,7 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
         return matches
             .filter((match: any) => match.similarity >= minSimilarity)
             .sort((a: any, b: any) => b.similarity - a.similarity)
-            .slice(0, 30);
+            .slice(0, 500);
     }
 
     private calculateSimilarity(
