@@ -7,7 +7,7 @@ import { sanitizePrompt, validatePrompt } from '../utils/prompt-sanitizer';
 import { generateImagePrompt, analyzeCharacterPrompt, optimizeCharacterPrompt } from '../prompts/image-prompts';
 
 export class ImageService {
-    static async generateImage(userId: string, prompt: string, style: string, keys?: { gemini?: string }): Promise<string> {
+    static async generateImage(userId: string, prompt: string, style: string, keys?: { gemini?: string }): Promise<{ url: string, optimizedPrompt: string }> {
         const { client: ai, isSystem } = await KeyManager.getGeminiClient(userId, keys?.gemini);
 
         // Sanitizar prompt antes de usar
@@ -42,7 +42,8 @@ export class ImageService {
                 for (const part of candidate.content.parts) {
                     if (part.inlineData?.data) {
                         const base64Image = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-                        return await ImageService.uploadToR2(base64Image, 'scenes/images');
+                        const url = await ImageService.uploadToR2(base64Image, 'scenes/images');
+                        return { url, optimizedPrompt: fullPrompt };
                     }
                 }
                 const textPart = candidate.content.parts.find(p => p.text);

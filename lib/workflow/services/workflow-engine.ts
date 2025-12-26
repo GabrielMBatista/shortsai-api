@@ -5,7 +5,7 @@ import { WorkflowTask } from '../types';
 
 export class WorkflowEngine {
 
-    static async completeTask(projectId: string, sceneId: string | undefined, type: 'image' | 'audio' | 'music' | 'video', status: 'completed' | 'failed', outputUrl?: string, error?: string, apiKeys?: any, timings?: any[], duration?: number) {
+    static async completeTask(projectId: string, sceneId: string | undefined, type: 'image' | 'audio' | 'music' | 'video', status: 'completed' | 'failed', outputUrl?: string, error?: string, apiKeys?: any, timings?: any[], duration?: number, optimizedPrompt?: string) {
         if (type === 'audio') {
             console.log(`[WorkflowEngine] Completing audio task for scene ${sceneId}. Duration: ${duration}`);
         }
@@ -29,7 +29,8 @@ export class WorkflowEngine {
             const payload: any = {
                 url: outputUrl,
                 timings: timings,
-                duration: (typeof duration === 'number') ? duration : undefined
+                duration: (typeof duration === 'number') ? duration : undefined,
+                optimizedPrompt: optimizedPrompt
             };
 
             // Update Status + DB + Broadcast in one go

@@ -52,6 +52,10 @@ export class WorkflowStateService {
             if (payload.url) {
                 data[`${type}_url`] = payload.url;
             }
+            if (payload.optimizedPrompt) {
+                if (type === 'image') data.image_prompt_optimized = payload.optimizedPrompt;
+                if (type === 'video') data.video_prompt_optimized = payload.optimizedPrompt;
+            }
         }
 
         // Auto-switch media type to video if video generation completes

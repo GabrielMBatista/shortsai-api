@@ -21,6 +21,25 @@ export async function PUT(request: Request, props: { params: Promise<{ id: strin
                 features: body.features
             }
         });
+
+        // Propagate changes to all users with this plan
+        const updatedUsers = await prisma.userLimits.updateMany({
+            where: {
+                user: {
+                    plan_id: params.id
+                }
+            },
+            data: {
+                monthly_images_limit: body.monthly_images_limit,
+                monthly_videos_limit: body.monthly_videos_limit,
+                monthly_minutes_tts: body.monthly_minutes_tts,
+                daily_requests_limit: body.daily_requests_limit,
+                daily_videos_limit: body.daily_videos_limit
+            }
+        });
+
+        console.log(`[Admin] Plan updated: ${plan.name} (${params.id}). Synced limits for ${updatedUsers.count} users.`);
+
         return NextResponse.json(plan);
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });

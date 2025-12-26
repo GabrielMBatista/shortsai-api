@@ -38,7 +38,8 @@ export async function GET(req: NextRequest) {
                 description: m.description,
                 tags: m.tags,
                 category: m.category,
-                duration: m.duration_seconds
+                duration: m.duration_seconds,
+                thumbnail_url: m.thumbnail_url
             }))
         });
     } catch (error) {

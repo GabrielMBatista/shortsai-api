@@ -252,6 +252,8 @@ model Scene {
   version            Int         @default(0)
   visual_effect      String      @default("zoom_in")
   video_model        String?
+  image_prompt_optimized String? @db.Text
+  video_prompt_optimized String? @db.Text
   jobs               Job[]
   project            Project     @relation(fields: [project_id], references: [id], onDelete: Cascade)
   characters         Character[] @relation("SceneToCharacter")

@@ -27,6 +27,7 @@ export async function POST(request: Request) {
         let timings: any[] | undefined;
         let duration: number | undefined;
         let reusedAsset: any = null;
+        let optimizedPrompt: string | undefined;
 
         // Check Limits
         const limitType = task.action === 'generate_image' ? 'image' :
@@ -50,12 +51,14 @@ export async function POST(request: Request) {
             switch (task.action) {
                 case 'generate_image':
                     if ('prompt' in task.params) {
-                        outputUrl = await AIService.generateImage(
+                        const result = await AIService.generateImage(
                             project.user_id,
                             task.params.prompt,
                             project.style,
                             task.apiKeys
                         );
+                        outputUrl = result.url;
+                        optimizedPrompt = result.optimizedPrompt;
                     }
                     break;
                 case 'generate_audio':
@@ -87,7 +90,7 @@ export async function POST(request: Request) {
                         const scene = await prisma.scene.findUnique({ where: { id: task.sceneId } });
                         if (scene && scene.image_url) {
                             const params = task.params as any;
-                            outputUrl = await AIService.generateVideo(
+                            const result = await AIService.generateVideo(
                                 project.user_id,
                                 scene.image_url,
                                 'prompt' in task.params ? task.params.prompt : '',
@@ -95,6 +98,8 @@ export async function POST(request: Request) {
                                 params.model || 'veo-2.0-generate-001',
                                 params.with_audio || false
                             );
+                            outputUrl = result.url;
+                            optimizedPrompt = result.optimizedPrompt;
                         } else {
                             throw new Error("Scene image not found for video generation");
                         }
@@ -131,7 +136,8 @@ export async function POST(request: Request) {
             undefined,
             task.apiKeys,
             timings,
-            duration
+            duration,
+            optimizedPrompt
         );
 
         return NextResponse.json({ success: true, url: outputUrl, reused: !!reusedAsset });

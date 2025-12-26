@@ -22,7 +22,7 @@ export class VideoService {
         keys?: { gemini?: string },
         modelId: string = 'veo-2.0-generate-001',
         withAudio: boolean = false
-    ): Promise<string> {
+    ): Promise<{ url: string, optimizedPrompt: string }> {
         const { key: apiKey, isSystem } = await KeyManager.getGeminiKey(userId, keys?.gemini);
         console.log(`[VideoService] Using API Key: ${apiKey.substring(0, 8)}... (System Key: ${isSystem})`);
 
@@ -90,7 +90,7 @@ export class VideoService {
             animationPrompt = sanitizedPrompt.substring(0, 100);
         }
 
-        const generatedVideo = await executeRequest(isSystem, async () => {
+        const generationResult = await executeRequest(isSystem, async () => {
             console.log(`[AIService] Generating video with ${selectedModel} for user ${userId}`);
 
             // Use REST API predictLongRunning
@@ -150,24 +150,26 @@ export class VideoService {
             // Track usage
             await trackUsage(userId, 'gemini', selectedModel, 'video');
 
-            return videoUrl;
+            return { url: videoUrl, optimizedPrompt: animationPrompt };
         }, userId);
 
+        let finalUrl = generationResult.url;
+
         // Upload to R2 if base64 (Centralized storage logic)
-        if (generatedVideo.startsWith('data:')) {
+        if (finalUrl.startsWith('data:')) {
             try {
                 const { uploadBase64ToR2 } = await import('@/lib/storage');
-                const r2Url = await uploadBase64ToR2(generatedVideo, 'scenes/videos');
+                const r2Url = await uploadBase64ToR2(finalUrl, 'scenes/videos');
                 if (r2Url) {
                     console.log(`[VideoService] Uploaded generated video to R2: ${r2Url}`);
-                    return r2Url;
+                    finalUrl = r2Url;
                 }
             } catch (e) {
                 console.error("[VideoService] Failed to upload to R2, returning Base64", e);
             }
         }
 
-        return generatedVideo;
+        return { url: finalUrl, optimizedPrompt: generationResult.optimizedPrompt };
     }
 
     private static async pollVeoOperation(operationName: string, apiKey: string): Promise<string> {

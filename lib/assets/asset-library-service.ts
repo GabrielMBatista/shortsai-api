@@ -23,6 +23,7 @@ interface AssetMatch {
     duration_seconds?: number | null;
     metadata?: any;
     isRecentlyUsed?: boolean;  // Indica se foi usado recentemente neste canal
+    thumbnail_url?: string | null;
 }
 
 interface ReuseStats {
@@ -243,6 +244,39 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
                 isRecentlyUsed: channelId ? asset.last_used_in_channel === channelId : false
             }));
 
+        // 1.5 Enriquecer com Thumbnails (Buscar Scenes originais)
+        // Isso evita que o frontend tenha que baixar o video inteiro para mostrar um thumb
+        const sceneIds = matches.map(m => m.id).filter(id => !id.startsWith('scene-')); // scene- prefix é do fallback search
+        // Contudo, m.id em matches da step 1 é o ID do AssetIndex.
+        // O AssetIndex tem source_scene_id. Mas o objeto 'matches' aqui já perdeu essa ref?
+        // Precisamos manter a ref do source_scene_id no map acima.
+
+        // CORREÇÃO: Vamos refazer o map para incluir source_scene_id temporariamente ou buscar direto nos assets.
+        // Como 'matches' é tipado, melhor fazer um lookup map.
+        const assetMap = new Map(assets.map(a => [a.id, a]));
+
+        if (sceneIds.length > 0) {
+            const scenes = await prisma.scene.findMany({
+                where: {
+                    id: { in: assets.map(a => a.source_scene_id) }
+                },
+                select: { id: true, image_url: true }
+            });
+
+            const sceneImageMap = new Map(scenes.map(s => [s.id, s.image_url]));
+
+            matches = matches.map(m => {
+                const asset = assetMap.get(m.id);
+                if (asset && asset.source_scene_id) {
+                    const thumb = sceneImageMap.get(asset.source_scene_id);
+                    if (thumb) {
+                        return { ...m, thumbnail_url: thumb };
+                    }
+                }
+                return m;
+            });
+        }
+
         // 2. Busca Híbrida: Se poucos matches, buscar diretamente na base de Cenas de todos os projetos
         if (matches.filter(m => m.similarity >= minSimilarity).length < 3) {
             console.log(`[AssetLibrary] Deep searching in Scenes table for ${assetType}...`);
@@ -276,7 +310,8 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
                     duration_seconds: assetType === 'AUDIO' ? Number(scene.duration_seconds) : null,
                     metadata: assetType === 'AUDIO' ? { timings: scene.word_timings } : null,
                     from_index: false,
-                    source_scene: scene
+                    source_scene: scene,
+                    thumbnail_url: scene.image_url // Para busca direta em scenes, o thumb é a própria img da cena
                 };
             });
 
@@ -402,7 +437,26 @@ Retorne APENAS JSON válido no formato: { "category": "...", "tags": ["...", "..
             }),
         ]);
 
-        return { assets, total };
+
+
+        // Enriquecer com thumbnails
+        let enrichedAssets: any[] = assets;
+        const sceneIds = assets.map(a => a.source_scene_id).filter(Boolean);
+
+        if (sceneIds.length > 0) {
+            const scenes = await prisma.scene.findMany({
+                where: { id: { in: sceneIds } },
+                select: { id: true, image_url: true }
+            });
+            const sceneImageMap = new Map(scenes.map(s => [s.id, s.image_url]));
+
+            enrichedAssets = assets.map(a => ({
+                ...a,
+                thumbnail_url: sceneImageMap.get(a.source_scene_id) || null
+            }));
+        }
+
+        return { assets: enrichedAssets, total };
     }
 
     /**
