@@ -53,12 +53,12 @@ export async function GET(
                 id: v.id,
                 title: v.titleSnapshot || 'Untitled Video',
                 url: `https://www.youtube.com/watch?v=${v.youtubeVideoId}`,
-                thumbnail: undefined, // Schema não tem thumbnail
+                thumbnail: `https://i.ytimg.com/vi/${v.youtubeVideoId}/mqdefault.jpg`,
                 description: undefined, // Schema não tem description
                 publishedAt: v.publishedAt?.toISOString(),
                 tags: [], // Schema não tem tags
                 stats: {
-                    views: latestMetrics?.views || 0,
+                    views: Number(latestMetrics?.views || 0),
                     likes: latestMetrics?.likes || 0,
                     comments: latestMetrics?.comments || 0
                 }

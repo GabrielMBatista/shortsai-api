@@ -43,7 +43,23 @@ export async function POST(
             updatedChannel,
             { headers: { 'X-Request-ID': requestId } }
         );
-    } catch (error) {
+    } catch (error: any) {
+        // Catch specific auth errors from ChannelService
+        if (error.message === 'Refresh token não disponível' ||
+            error.message.includes('Sua conexão com o Google expirou') ||
+            error.message.includes('invalid_grant')) {
+
+            // Return 401 with a clear message for the frontend
+            return NextResponse.json(
+                {
+                    error: 'Authentication failed',
+                    code: 'AUTH_REQUIRED',
+                    message: 'Sua conexão com o Google expirou. Por favor, reconecte sua conta.'
+                },
+                { status: 401, headers: { 'X-Request-ID': requestId } }
+            );
+        }
+
         return handleError(error, requestId);
     }
 }
