@@ -70,6 +70,7 @@ export class AudioService {
         const ELEVEN_LABS_API_URL = "https://api.elevenlabs.io/v1";
 
         return executeRequest(isSystem, async () => {
+            // Use with-timestamps endpoint
             const response = await fetch(`${ELEVEN_LABS_API_URL}/text-to-speech/${voiceId}/with-timestamps`, {
                 method: 'POST',
                 headers: {
@@ -91,8 +92,9 @@ export class AudioService {
 
             const data = await response.json();
             const base64Audio = data.audio_base64;
-            const alignment = data.alignment;
+            const alignment = data.alignment; // { characters: [], character_start_times_seconds: [], character_end_times_seconds: [] }
 
+            // Process Timings (Character to Word)
             let timings: any[] = [];
             if (alignment && alignment.characters && alignment.character_start_times_seconds) {
                 const chars = alignment.characters;
@@ -105,9 +107,11 @@ export class AudioService {
 
                 for (let i = 0; i < chars.length; i++) {
                     const char = chars[i];
+
+                    // Simple logic: split on spaces to form words
                     if (char === ' ') {
                         if (currentWord) {
-                            timings.push({ word: currentWord, start: wordStart, end: wordEnd });
+                            timings.push({ word: currentWord.trim(), start: wordStart, end: wordEnd });
                             currentWord = "";
                             wordStart = -1;
                         }
@@ -117,8 +121,9 @@ export class AudioService {
                         currentWord += char;
                     }
                 }
+                // Push last word if exists
                 if (currentWord) {
-                    timings.push({ word: currentWord, start: wordStart, end: wordEnd });
+                    timings.push({ word: currentWord.trim(), start: wordStart, end: wordEnd });
                 }
             }
 
@@ -126,12 +131,13 @@ export class AudioService {
             const url = await AudioService.uploadToR2(dataUri, 'scenes/audio');
 
             let duration = 0;
+            // Best duration source: last character end time
             if (alignment && alignment.character_end_times_seconds && alignment.character_end_times_seconds.length > 0) {
                 duration = alignment.character_end_times_seconds[alignment.character_end_times_seconds.length - 1];
             }
 
             // Fallback: Estimate from file size (assuming ~128kbps for ElevenLabs MP3)
-            if (!duration && base64Audio) {
+            if ((!duration || duration === 0) && base64Audio) {
                 const bufferLength = Buffer.from(base64Audio, 'base64').length;
                 // 128kbps = 16000 bytes/sec
                 duration = bufferLength / 16000;
