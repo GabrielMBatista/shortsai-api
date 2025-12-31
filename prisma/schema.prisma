@@ -159,6 +159,8 @@ model Project {
   include_music                 Boolean             @default(false)
   bg_music_prompt               String?
   bg_music_url                  String?
+  bg_music_volume               Float?              @default(0.1)
+  bg_music_config               Json?
   bg_music_status               MusicStatus?
   created_at                    DateTime            @default(now())
   updated_at                    DateTime            @default(now()) @updatedAt
@@ -255,6 +257,12 @@ model Scene {
   image_prompt_optimized String? @db.Text
   video_prompt_optimized String? @db.Text
   video_crop_config Json?
+  
+  // Cinematic Engine Fields
+  hook_text          String?     // Texto "manchete" para primeiros 3s
+  audio_effects      Json?       // Array de efeitos do Eden Pack: [{type, timing, volume}]
+  particle_overlay   String?     // Nome do arquivo de overlay (ex: "particles-dust")
+  text_style         Json?       // Config de estilo do texto: {font, color, position}
   jobs               Job[]
   project            Project     @relation(fields: [project_id], references: [id], onDelete: Cascade)
   characters         Character[] @relation("SceneToCharacter")

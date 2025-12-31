@@ -123,11 +123,33 @@ export async function POST(request: NextRequest) {
         const safeVoiceName = voice_name?.trim() || undefined;
         const safeTtsProvider = tts_provider?.trim() || 'gemini';
 
+        // 🧠 Smart Extraction: Parse topic if it's a JSON script
+        let extractedFromTopic: any = null;
+        if (topic && typeof topic === 'string' && (topic.trim().startsWith('{') || topic.trim().startsWith('['))) {
+            try {
+                const parsed = JSON.parse(topic);
+                // Unwrap if nested like { "id": { meta: ... } }
+                let scriptRoot = parsed.scriptMetadata || parsed;
+                if (!scriptRoot.scenes && !scriptRoot.meta) {
+                    const keys = Object.keys(scriptRoot);
+                    if (keys.length === 1 && typeof scriptRoot[keys[0]] === 'object') {
+                        const potentialRoot = scriptRoot[keys[0]];
+                        if (potentialRoot.scenes || potentialRoot.meta) {
+                            scriptRoot = potentialRoot;
+                        }
+                    }
+                }
+                extractedFromTopic = scriptRoot;
+            } catch (e) {
+                // Ignore parse errors here
+            }
+        }
+
         // 🛡️ Sanitize Title: Use extracted title if generated_title is a JSON string
         // Helper for recursive search (Inlined from projectUtils matching logic)
         const findTitleDeep = (obj: any, depth: number = 0): string | null => {
             if (!obj || typeof obj !== 'object' || depth > 8) return null;
-            const priorityKeys = ['titulo', 'tittle', 'title', 'projectTitle', 'videoTitle', 'scriptTitle', 'id_da_semana', 'tema_dia'];
+            const priorityKeys = ['titulo_otimizado', 'titulo', 'tittle', 'title', 'projectTitle', 'videoTitle', 'scriptTitle', 'id_da_semana', 'tema_dia'];
             for (const key of priorityKeys) {
                 if (obj[key] && typeof obj[key] === 'string' && obj[key].trim().length > 0) return obj[key];
             }
@@ -145,6 +167,12 @@ export async function POST(request: NextRequest) {
         };
 
         let safeGeneratedTitle = generated_title;
+
+        // Try specific extraction from topic if not provided
+        if (!safeGeneratedTitle && extractedFromTopic) {
+            const meta = extractedFromTopic.meta || {};
+            safeGeneratedTitle = meta.titulo_otimizado || meta.titulo || extractedFromTopic.titulo || extractedFromTopic.title || extractedFromTopic.videoTitle || extractedFromTopic.projectTitle;
+        }
         if (typeof safeGeneratedTitle === 'string' && (safeGeneratedTitle.trim().startsWith('{') || safeGeneratedTitle.trim().startsWith('['))) {
             try {
                 const parsed = JSON.parse(safeGeneratedTitle);
@@ -163,6 +191,12 @@ export async function POST(request: NextRequest) {
 
         // 🛡️ Sanitize Description & Hashtags
         let safeGeneratedDescription = generated_description;
+
+        if (!safeGeneratedDescription && extractedFromTopic) {
+            const meta = extractedFromTopic.meta || {};
+            safeGeneratedDescription = meta.mensagem_nuclear || meta.tema_espiritual || extractedFromTopic.description || extractedFromTopic.resumo;
+        }
+
         if (typeof safeGeneratedDescription === 'string' && (safeGeneratedDescription.trim().startsWith('{') || safeGeneratedDescription.trim().startsWith('['))) {
             try {
                 const parsed = JSON.parse(safeGeneratedDescription);
@@ -252,29 +286,32 @@ export async function POST(request: NextRequest) {
                 let foundSpecificTitle = false;
 
                 // If topic is JSON (from batch import), extract relevant text
-                if (topic && topic.trim().startsWith('{')) {
+                if (extractedFromTopic) {
+                    const scriptRoot = extractedFromTopic;
+
+                    // Extract rich content from Scenes if available
+                    if (scriptRoot.scenes && Array.isArray(scriptRoot.scenes)) {
+                        const narrations = scriptRoot.scenes
+                            .map((s: any) => s.narration || s.text || "")
+                            .join(" ");
+                        const hook = scriptRoot.hook_killer || scriptRoot.hook_falado || "";
+                        videoContentForAI = `${hook} ${narrations}`.trim();
+                    }
+
+                    // Title is typically already extracted into safeGeneratedTitle, but check again if needed
+                    const meta = scriptRoot.meta || {};
+                    const extractedTitle = meta.titulo_otimizado || meta.titulo || scriptRoot.title || scriptRoot.videoTitle || scriptRoot.projectTitle;
+                    if (extractedTitle && !safeGeneratedTitle) {
+                        // Fallback if safeGeneratedTitle wasn't set for some reason
+                        videoTitleForAI = extractedTitle;
+                    }
+                } else if (topic && topic.trim().startsWith('{')) {
+                    // Fallback to legacy parsing if strictly needed, but extractedFromTopic should cover it
                     try {
                         const parsed = JSON.parse(topic);
                         const scriptMetadata = parsed.scriptMetadata || parsed; // Fallback
-
-                        // Extract rich content from Scenes if available
-                        if (scriptMetadata.scenes && Array.isArray(scriptMetadata.scenes)) {
-                            const narrations = scriptMetadata.scenes
-                                .map((s: any) => s.narration || s.text || "")
-                                .join(" ");
-                            const hook = scriptMetadata.hook_falado || "";
-                            videoContentForAI = `${hook} ${narrations}`.trim();
-                        }
-
-                        // Robust Title Extraction
-                        const extractedTitle = scriptMetadata.titulo || scriptMetadata.title || scriptMetadata.videoTitle || scriptMetadata.projectTitle;
-                        if (extractedTitle) {
-                            videoTitleForAI = extractedTitle;
-                            foundSpecificTitle = true;
-                            console.log(`[Async] Extracted title from JSON: "${videoTitleForAI}"`);
-                        }
+                        // ... logic already covered by extractedFromTopic above ...
                     } catch (e) {
-                        // Keep original string if parse fails
                         console.warn(`[Async] Failed to parse topic JSON for Project ${project.id}`);
                     }
                 }

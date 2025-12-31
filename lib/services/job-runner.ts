@@ -108,7 +108,7 @@ async function processJob(jobId: string, userId: string) {
         }
 
         // Call the existing VideoService
-        let videoUrl = await VideoService.generateVideo(
+        const { url: initialUrl, optimizedPrompt } = await VideoService.generateVideo(
             userId,
             imageUrl,
             prompt,
@@ -116,6 +116,8 @@ async function processJob(jobId: string, userId: string) {
             modelId,
             withAudio
         );
+
+        let videoUrl = initialUrl;
 
         // Upload to R2 to avoid saving Base64 in DB
         try {
@@ -139,7 +141,7 @@ async function processJob(jobId: string, userId: string) {
                 where: { id: jobId },
                 data: {
                     status: JobStatus.COMPLETED,
-                    outputResult: { videoUrl }
+                    outputResult: { videoUrl, optimizedPrompt }
                 }
             });
 
@@ -149,6 +151,7 @@ async function processJob(jobId: string, userId: string) {
                     where: { id: job.sceneId },
                     data: {
                         video_url: videoUrl,
+                        video_prompt_optimized: optimizedPrompt,
                         video_status: SceneStatus.COMPLETED,
                         status: "READY",
                         version: { increment: 1 },
