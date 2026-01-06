@@ -175,6 +175,31 @@ async function processJob(jobId: string, userId: string) {
                 url: videoUrl,
                 mediaType: 'video'
             });
+
+            // Register video in Asset Library for future reuse
+            try {
+                const { assetLibraryService } = await import("@/lib/assets/asset-library-service");
+                const scene = await prisma.scene.findUnique({
+                    where: { id: job.sceneId },
+                    select: { visual_description: true, duration_seconds: true }
+                });
+
+                if (scene) {
+                    await assetLibraryService.registerAsset({
+                        source_scene_id: job.sceneId,
+                        source_project_id: job.projectId,
+                        asset_type: 'VIDEO',
+                        url: videoUrl,
+                        description: scene.visual_description,
+                        duration_seconds: scene.duration_seconds ? parseFloat(scene.duration_seconds.toString()) : null,
+                        metadata: { model: modelId || 'veo', optimized_prompt: optimizedPrompt }
+                    });
+                    console.log(`[Job Runner] Video registered in Asset Library: ${videoUrl}`);
+                }
+            } catch (assetErr) {
+                console.error('[Job Runner] Failed to register video in asset library:', assetErr);
+                // Non-critical - don't fail the job
+            }
         }
 
     } catch (error: any) {
