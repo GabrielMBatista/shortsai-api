@@ -298,7 +298,8 @@ VOCÊ ESTÁ USANDO A PERSONA: "${persona.name}"
                     }
 
                     // 🛡️ GARANTIA FINAL DE METADADOS VÁLIDOS
-                    const safeVideoTitle = finalVideoTitle && finalVideoTitle.trim() !== ""
+                    // Fallback to topic if title is missing or generic "Untitled"
+                    const safeVideoTitle = (finalVideoTitle && finalVideoTitle.trim() !== "" && finalVideoTitle !== "Untitled")
                         ? finalVideoTitle
                         : topic;
 
