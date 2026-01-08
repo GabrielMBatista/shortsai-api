@@ -25,7 +25,17 @@ export interface NormalizedScene {
 /**
  * Detecta automaticamente o formato do JSON e normaliza para estrutura padrão
  */
-export function normalizeScriptFormat(json: any, fallbackTopic: string = "Untitled"): NormalizedScript {
+export function normalizeScriptFormat(rawJson: any, fallbackTopic: string = "Untitled"): NormalizedScript {
+    let json = rawJson;
+    if (typeof json === 'string') {
+        try {
+            json = JSON.parse(json);
+            console.log('[JsonNormalizer] Parsed string input to object');
+        } catch (e) {
+            console.warn('[JsonNormalizer] Failed to parse string input, treating as raw');
+        }
+    }
+
     console.log('[JsonNormalizer] Detecting format...', Object.keys(json));
 
     // Formato 1: Padrão do Sistema (videoTitle, scenes)
@@ -131,14 +141,34 @@ export function normalizeScenes(scenes: any[]): NormalizedScene[] {
  */
 function normalizeStandardFormat(json: any, fallbackTopic: string): NormalizedScript {
     return {
-        videoTitle: json.videoTitle || json.title || fallbackTopic,
-        videoDescription: json.videoDescription || json.description || "",
+        videoTitle: json.videoTitle || json.title || json.titulo_otimizado || (json.meta && json.meta.titulo_otimizado) || fallbackTopic,
+        videoDescription: json.videoDescription || json.description || (json.meta && json.meta.mensagem_nuclear) || "",
         shortsHashtags: json.shortsHashtags || json.hashtags || [],
         tiktokText: json.tiktokText || json.tiktok_text || "",
         tiktokHashtags: json.tiktokHashtags || json.tiktok_hashtags || [],
         scenes: normalizeScenes(json.scenes || []),
         metadata: json
     };
+}
+
+/**
+ * Busca profunda recursiva por uma chave em qualquer nível do objeto
+ */
+function deepSearch(obj: any, targetKey: string): any {
+    if (!obj || typeof obj !== 'object') return undefined;
+
+    if (obj[targetKey] !== undefined) {
+        return obj[targetKey];
+    }
+
+    for (const key of Object.keys(obj)) {
+        const result = deepSearch(obj[key], targetKey);
+        if (result !== undefined) {
+            return result;
+        }
+    }
+
+    return undefined;
 }
 
 /**
@@ -168,19 +198,23 @@ function normalizeEdenSingleFormat(json: any, fallbackTopic: string): Normalized
     }
     hashtags.push('#shorts', '#viral', '#fe');
 
+    // Extração de título com fallback em busca profunda
+    let extractedTitle = meta.titulo_otimizado || roteiro.titulo || roteiro.titulo_otimizado;
+    if (!extractedTitle || extractedTitle === fallbackTopic) {
+        // Busca profunda como última tentativa
+        extractedTitle = deepSearch(json, 'titulo_otimizado') || fallbackTopic;
+    }
+
+    console.log('[normalizeEdenSingleFormat] Extracted title:', extractedTitle);
+
     return {
-        videoTitle: meta.titulo_otimizado || roteiro.titulo || fallbackTopic,
+        videoTitle: extractedTitle,
         videoDescription: descriptionParts.join('\n\n'),
         shortsHashtags: Array.from(new Set(hashtags)).slice(0, 15),
         tiktokText: hook || meta.mensagem_nuclear || "",
         tiktokHashtags: ['#fyp', '#viral', '#fe'],
         scenes: normalizeScenes(roteiro.scenes || []),
-        metadata: {
-            ...meta,
-            hook_killer: hook,
-            trilha_sonora: meta.trilha_sonora,
-            tema_espiritual: meta.tema_espiritual
-        }
+        metadata: json // Retorna JSON original completo para fallback no frontend
     };
 }
 
@@ -208,6 +242,8 @@ function normalizeFlatFormat(json: any, fallbackTopic: string): NormalizedScript
         json.titulo ||
         json.videoTitle ||
         json.video_title ||
+        json.titulo_otimizado ||
+        (json.meta && json.meta.titulo_otimizado) ||
         fallbackTopic;
 
     const description =
@@ -216,6 +252,7 @@ function normalizeFlatFormat(json: any, fallbackTopic: string): NormalizedScript
         json.videoDescription ||
         json.intro ||
         json.hook_falado ||
+        (json.meta && json.meta.mensagem_nuclear) ||
         "";
 
     // Construir hashtags a partir de campos disponíveis
@@ -274,11 +311,13 @@ function normalizeGenericFormat(json: any, fallbackTopic: string): NormalizedScr
         json.titulo ||
         json.videoTitle ||
         json.name ||
+        json.titulo_otimizado ||
+        (json.meta && json.meta.titulo_otimizado) ||
         fallbackTopic;
 
     return {
         videoTitle: title,
-        videoDescription: json.description || json.descricao || "",
+        videoDescription: json.description || json.descricao || (json.meta && json.meta.mensagem_nuclear) || "",
         shortsHashtags: ['#shorts', '#viral'],
         tiktokText: "",
         tiktokHashtags: ['#fyp'],

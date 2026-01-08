@@ -422,3 +422,48 @@ export async function GET(request: NextRequest) {
         return handleError(error, requestId);
     }
 }
+
+/**
+ * DELETE /api/projects
+ * Bulk delete projects (e.g., clear archive)
+ */
+export async function DELETE(request: NextRequest) {
+    const requestId = request.headers.get('x-request-id') || randomUUID();
+
+    try {
+        const session = await auth();
+        if (!session?.user?.id) throw new UnauthorizedError();
+
+        const { searchParams } = new URL(request.url);
+        const isArchived = searchParams.get('is_archived') === 'true';
+
+        // Only allow bulk delete for archived projects for now
+        if (!isArchived) {
+            return NextResponse.json(
+                { error: 'Bulk delete is only supported for archived projects. Use ?is_archived=true' },
+                { status: 400 }
+            );
+        }
+
+        const user_id = session.user.id;
+
+        // Delete all archived projects for this user
+        // Note: Scenes and other relations are cascaded by Prisma schema, 
+        // but assets (files) are NOT deleted, preserving them as requested.
+        const result = await prisma.project.deleteMany({
+            where: {
+                user_id,
+                is_archived: true
+            }
+        });
+
+        return NextResponse.json({
+            success: true,
+            deletedCount: result.count,
+            message: `Successfully deleted ${result.count} archived projects`
+        }, { headers: { 'X-Request-ID': requestId } });
+
+    } catch (error) {
+        return handleError(error, requestId);
+    }
+}

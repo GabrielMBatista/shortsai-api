@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
                 type: JobType.VIDEO_RENDER,
                 status: JobStatus.QUEUED,
                 projectId: body.projectId,
-                inputPayload: body
+                inputPayload: body as any
             }
         });
 

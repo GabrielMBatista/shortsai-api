@@ -23,6 +23,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'scriptJson is required' }, { status: 400 });
         }
 
+        console.log('[POST /api/scripts/normalize] Received scriptJson typeof:', typeof scriptJson);
+        console.log('[POST /api/scripts/normalize] Received scriptJson preview:', JSON.stringify(scriptJson).substring(0, 200));
+
         // Usar o mesmo normalizador do backend
         const normalized = normalizeScriptFormat(scriptJson, fallbackTopic || 'Untitled');
 
