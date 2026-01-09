@@ -30,7 +30,7 @@ RUN npm run build
 
 # Production image, copy all the files and run next
 FROM base AS runner
-RUN apt-get update -y && apt-get install -y openssl ca-certificates
+RUN apt-get update -y && apt-get install -y openssl ca-certificates ffmpeg
 WORKDIR /app
 
 ENV NODE_ENV=production
