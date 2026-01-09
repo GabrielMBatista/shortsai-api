@@ -44,14 +44,24 @@ export class VideoRenderer {
 
             let bgMusicPath: string | undefined;
             if (input.bgMusicUrl) {
-                bgMusicPath = path.join(this.workDir, 'bgmusic.mp3');
-                await FFmpegService.downloadFile(input.bgMusicUrl, bgMusicPath);
+                try {
+                    bgMusicPath = path.join(this.workDir, 'bgmusic.mp3');
+                    await FFmpegService.downloadFile(input.bgMusicUrl, bgMusicPath);
+                } catch (err) {
+                    console.warn('[Renderer] Failed to download background music:', err);
+                    bgMusicPath = undefined; // Continue without music
+                }
             }
 
             let endingVideoPath: string | undefined;
             if (input.endingVideoUrl) {
-                endingVideoPath = path.join(this.workDir, 'ending.mp4');
-                await FFmpegService.downloadFile(input.endingVideoUrl, endingVideoPath);
+                try {
+                    endingVideoPath = path.join(this.workDir, 'ending.mp4');
+                    await FFmpegService.downloadFile(input.endingVideoUrl, endingVideoPath);
+                } catch (err) {
+                    console.warn('[Renderer] Failed to download ending video:', err);
+                    endingVideoPath = undefined;
+                }
             }
 
             // Phase 3: Generate subtitles
@@ -152,29 +162,40 @@ export class VideoRenderer {
                 audio: ''
             };
 
-            // Download video or image
-            if (scene.videoUrl) {
-                files.video = path.join(this.workDir!, `scene${i}_video.mp4`);
-                await FFmpegService.downloadFile(scene.videoUrl, files.video);
-            } else if (scene.imageUrl) {
-                files.image = path.join(this.workDir!, `scene${i}_image.jpg`);
-                await FFmpegService.downloadFile(scene.imageUrl, files.image);
+            try {
+                // Download video or image
+                if (scene.videoUrl) {
+                    files.video = path.join(this.workDir!, `scene${i}_video.mp4`);
+                    await FFmpegService.downloadFile(scene.videoUrl, files.video);
+                } else if (scene.imageUrl) {
+                    files.image = path.join(this.workDir!, `scene${i}_image.jpg`);
+                    await FFmpegService.downloadFile(scene.imageUrl, files.image);
+                }
+
+                // Download audio
+                if (scene.audioUrl) {
+                    files.audio = path.join(this.workDir!, `scene${i}_audio.mp3`);
+                    await FFmpegService.downloadFile(scene.audioUrl, files.audio);
+                } else {
+                    console.warn(`[Renderer] Scene ${i} has no audio URL. Skipping audio download.`);
+                    // Create silent audio? Or let ffmpeg fail? 
+                    // Better to fail gracefully or use a placeholder if possible, but for now just warn.
+                }
+
+                // Download particle overlay if present
+                if (scene.particleOverlay) {
+                    files.particle = path.join(this.workDir!, `scene${i}_particle.mp4`);
+                    await FFmpegService.downloadFile(scene.particleOverlay, files.particle);
+                }
+
+                sceneFiles.push(files);
+
+                const progress = 10 + (i / scenes.length) * 20;
+                this.updateProgress('downloading', progress, `Downloaded scene ${i + 1}/${scenes.length}`);
+            } catch (error: any) {
+                console.error(`[Renderer] Failed to download assets for scene ${i}:`, error);
+                throw new Error(`Failed to download assets for scene ${i + 1}: ${error.message}`);
             }
-
-            // Download audio
-            files.audio = path.join(this.workDir!, `scene${i}_audio.mp3`);
-            await FFmpegService.downloadFile(scene.audioUrl, files.audio);
-
-            // Download particle overlay if present
-            if (scene.particleOverlay) {
-                files.particle = path.join(this.workDir!, `scene${i}_particle.mp4`);
-                await FFmpegService.downloadFile(scene.particleOverlay, files.particle);
-            }
-
-            sceneFiles.push(files);
-
-            const progress = 10 + (i / scenes.length) * 20;
-            this.updateProgress('downloading', progress, `Downloaded scene ${i + 1}/${scenes.length}`);
         }
 
         return sceneFiles;
