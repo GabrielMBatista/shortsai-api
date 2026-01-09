@@ -95,7 +95,7 @@ export async function POST(request: Request) {
                                 scene.image_url,
                                 'prompt' in task.params ? task.params.prompt : '',
                                 task.apiKeys,
-                                params.model || 'veo-2.0-generate-001',
+                                params.model || 'veo-3.0-fast-generate-001',
                                 params.with_audio || false
                             );
                             outputUrl = result.url;

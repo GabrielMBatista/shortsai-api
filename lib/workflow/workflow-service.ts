@@ -45,7 +45,7 @@ export class WorkflowService {
                     imageUrl: scene.image_url,
                     prompt: scene.visual_description,
                     keys: apiKeys,
-                    modelId: (project as any).video_model || 'veo-2.0-generate-001',
+                    modelId: (project as any).video_model || 'veo-3.0-fast-generate-001',
                     withAudio: false
                 });
                 return { message: 'Video generation started (Async)' };

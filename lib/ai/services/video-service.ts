@@ -20,7 +20,7 @@ export class VideoService {
         imageUrl: string,
         prompt: string,
         keys?: { gemini?: string },
-        modelId: string = 'veo-2.0-generate-001',
+        modelId: string = 'veo-3.0-fast-generate-001',
         withAudio: boolean = false
     ): Promise<{ url: string, optimizedPrompt: string }> {
         const { key: apiKey, isSystem } = await KeyManager.getGeminiKey(userId, keys?.gemini);
@@ -50,7 +50,7 @@ export class VideoService {
         }
 
         let selectedModel = modelId;
-        if (selectedModel === 'veo') selectedModel = 'veo-2.0-generate-001';
+        if (selectedModel === 'veo') selectedModel = 'veo-3.0-fast-generate-001';
 
         // Sanitizar prompt antes de processar
         const sanitizedPrompt = sanitizePrompt(prompt, 'video');

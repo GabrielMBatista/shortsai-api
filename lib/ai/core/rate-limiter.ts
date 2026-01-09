@@ -105,7 +105,7 @@ export class RateLimiter {
         }
     }
 
-    static async checkVideoRateLimits(userId: string, modelId: string = 'veo-2.0-generate-001') {
+    static async checkVideoRateLimits(userId: string, modelId: string = 'veo-3.0-fast-generate-001') {
         // 1. Check RPM (In-Memory)
         const now = Date.now();
         const userRpm = this.videoRpmCache.get(userId);

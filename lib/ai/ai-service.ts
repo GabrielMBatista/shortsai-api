@@ -36,7 +36,7 @@ export class AIService {
         imageUrl: string,
         prompt: string,
         keys?: { gemini?: string },
-        modelId: string = 'veo-2.0-generate-001',
+        modelId: string = 'veo-3.0-fast-generate-001', // This line was already 'veo-3.0-fast-generate-001'
         withAudio: boolean = false
     ) {
         return VideoService.generateVideo(userId, imageUrl, prompt, keys, modelId, withAudio);
